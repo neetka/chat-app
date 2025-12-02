@@ -122,7 +122,7 @@ const SignUpPage = () => {
         <div className='text-center'>
             <p className='text-base-content/60'>
             Already have an account? {""}
-            <Link to="/login" className='link link-primary'>
+            <Link to="/login" className='link text-[#5814ec] underline'>
             Sign in
             </Link>
             </p>
