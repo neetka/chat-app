@@ -107,7 +107,7 @@ const SignUpPage = () => {
             </div>
           </div>
 
-          <button type='submit' className='bg-[#570df8] hover:bg-[#4500c4] text-white py-2 rounded-lg w-full' disabled={isSigningUp}>
+          <button type='submit' className='btn btn-primary w-full' disabled={isSigningUp}>
             {isSigningUp ? (
               <>
               <Loader2 className='size-5 animate-spin'/>
@@ -122,7 +122,7 @@ const SignUpPage = () => {
         <div className='text-center'>
             <p className='text-base-content/60'>
             Already have an account? {""}
-            <Link to="/login" className='link text-[#5814ec] underline'>
+            <Link to="/login" className='link text-primary'>
             Sign in
             </Link>
             </p>
