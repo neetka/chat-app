@@ -17,6 +17,18 @@ const messageSchema = new mongoose.Schema(
         image: {
             type: String,
         },
+        ciphertext: {
+            type: String,
+        },
+        iv: {
+            type: String,
+        },
+        handshake: {
+            type: Object,
+        },
+        senderDeviceId: {
+            type: String,
+        },
     },
     {timestamps: true}
 );

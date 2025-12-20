@@ -6,6 +6,7 @@ import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton";
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
+import { Clock } from "lucide-react";
 
 const ChatContainer = () => {
   const {
@@ -73,10 +74,24 @@ const ChatContainer = () => {
                 />
               </div>
             </div>
-            <div className="chat-header mb-1">
+            <div className="chat-header mb-1 flex items-center gap-1">
               <time className="text-xs opacity-50 ml-1">
                 {formatMessageTime(message.createdAt)}
               </time>
+              {message.expiresAt && (
+                <span className="text-xs opacity-60 flex items-center gap-0.5">
+                  <Clock size={12} />
+                  {(() => {
+                    const now = Date.now();
+                    const expiresAt = new Date(message.expiresAt).getTime();
+                    if (expiresAt <= now) return "Expired";
+                    const secondsLeft = Math.ceil((expiresAt - now) / 1000);
+                    if (secondsLeft < 60) return `${secondsLeft}s`;
+                    const minutesLeft = Math.ceil(secondsLeft / 60);
+                    return `${minutesLeft}m`;
+                  })()}
+                </span>
+              )}
             </div>
             <div className="chat-bubble flex flex-col">
               {message.image && (

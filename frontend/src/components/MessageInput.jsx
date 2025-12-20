@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 const MessageInput = () => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
+  const [expirySeconds, setExpirySeconds] = useState(null);
   const fileInputRef = useRef(null);
   const { sendMessage } = useChatStore();
 
@@ -36,11 +37,13 @@ const MessageInput = () => {
       await sendMessage({
         text: text.trim(),
         image: imagePreview,
+        expirySeconds,
       });
 
       // Clear form
       setText("");
       setImagePreview(null);
+      setExpirySeconds(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -95,6 +98,20 @@ const MessageInput = () => {
             <Image size={20} />
           </button>
         </div>
+        <select
+          className="select select-sm w-28 mr-2"
+          value={expirySeconds ?? ""}
+          onChange={(e) =>
+            setExpirySeconds(
+              e.target.value === "" ? null : Number(e.target.value)
+            )
+          }
+        >
+          <option value="">Keep</option>
+          <option value="5">5s</option>
+          <option value="30">30s</option>
+          <option value="60">1m</option>
+        </select>
         <button
           type="submit"
           className="btn btn-sm btn-circle"
