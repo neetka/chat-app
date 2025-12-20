@@ -65,3 +65,21 @@ export const getSessions = async (userId) => {
   });
 };
 
+// Clear all crypto data (useful when key derivation changes)
+export const clearAllCryptoData = async () => {
+  const db = await getDb();
+  const tx = db.transaction([DEVICE_STORE, SESSION_STORE], "readwrite");
+  await Promise.all([
+    new Promise((resolve, reject) => {
+      const req = tx.objectStore(DEVICE_STORE).clear();
+      req.onsuccess = resolve;
+      req.onerror = () => reject(req.error);
+    }),
+    new Promise((resolve, reject) => {
+      const req = tx.objectStore(SESSION_STORE).clear();
+      req.onsuccess = resolve;
+      req.onerror = () => reject(req.error);
+    }),
+  ]);
+  console.log("[storage] Cleared all crypto data");
+};

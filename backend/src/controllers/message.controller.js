@@ -39,14 +39,9 @@ export const getMessages = async (req, res) => {
 
 export const sendMessage = async (req, res) => {
   try {
-    const { ciphertext, iv, handshake, senderDeviceId } = req.body;
-    const { image } = req.body;
+    const { text, image } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
-
-    if (!ciphertext || !iv) {
-      return res.status(400).json({ error: "ciphertext and iv are required" });
-    }
 
     let imageUrl;
     if (image) {
@@ -58,30 +53,15 @@ export const sendMessage = async (req, res) => {
     const newMessage = new Message({
       senderId,
       receiverId,
-      text: undefined,
+      text: text || "",
       image: imageUrl,
-      ciphertext,
-      iv,
-      handshake: handshake || null,
-      senderDeviceId,
     });
 
     await newMessage.save();
 
     const receiverSocketId = getReceiverSocketId(receiverId);
     if (receiverSocketId) {
-      console.log(`[Server] Sending message to receiver ${receiverId} (socket: ${receiverSocketId})`);
-      io.to(receiverSocketId).emit("newMessage", {
-        _id: newMessage._id,
-        senderId: newMessage.senderId,
-        receiverId: newMessage.receiverId,
-        ciphertext: newMessage.ciphertext,
-        iv: newMessage.iv,
-        handshake: newMessage.handshake,
-        createdAt: newMessage.createdAt,
-      });
-    } else {
-      console.log(`[Server] Receiver ${receiverId} not online, message saved but not delivered`);
+      io.to(receiverSocketId).emit("newMessage", newMessage);
     }
 
     res.status(201).json(newMessage);

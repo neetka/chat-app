@@ -1,4 +1,7 @@
-import { sharedKey as x25519, generateKeyPair as generateX25519KeyPair } from "@stablelib/x25519";
+import {
+  sharedKey as x25519,
+  generateKeyPair as generateX25519KeyPair,
+} from "@stablelib/x25519";
 import { HKDF } from "@stablelib/hkdf";
 import { SHA256 } from "@stablelib/sha256";
 import { randomBytes } from "@stablelib/random";
@@ -17,32 +20,45 @@ const fromBase64 = (str) => {
   if (str == null) {
     throw new Error(`Invalid Base64 input: value is null or undefined`);
   }
-  
+
   // If it's already a Uint8Array, return it
   if (str instanceof Uint8Array) {
     return str;
   }
-  
+
   // If it's an object, try to extract a string value
-  if (typeof str === 'object') {
+  if (typeof str === "object") {
     // If it has a toString method, use it
-    if (typeof str.toString === 'function') {
+    if (typeof str.toString === "function") {
       str = str.toString();
     } else {
       // Try common property names
       str = str.value || str.data || str.key || JSON.stringify(str);
     }
   }
-  
+
   // Ensure it's a string
-  if (typeof str !== 'string') {
-    throw new Error(`Invalid Base64 input: expected string, got ${typeof str}. Value: ${JSON.stringify(str).substring(0, 50)}`);
+  if (typeof str !== "string") {
+    throw new Error(
+      `Invalid Base64 input: expected string, got ${typeof str}. Value: ${JSON.stringify(
+        str
+      ).substring(0, 50)}`
+    );
   }
-  
+
   try {
-    return new Uint8Array(atob(str).split("").map((c) => c.charCodeAt(0)));
+    return new Uint8Array(
+      atob(str)
+        .split("")
+        .map((c) => c.charCodeAt(0))
+    );
   } catch (error) {
-    throw new Error(`Failed to decode Base64 string: ${error.message}. Input: ${str.substring(0, 20)}...`);
+    throw new Error(
+      `Failed to decode Base64 string: ${error.message}. Input: ${str.substring(
+        0,
+        20
+      )}...`
+    );
   }
 };
 
@@ -75,12 +91,24 @@ const hkdf = (hash, key, salt, info, length) => {
 
 const deriveRootAndChains = (secret, role) => {
   const salt = new Uint8Array(32);
-  const root = hkdf(SHA256, secret, salt, new TextEncoder().encode("chatapp:x3dh:root"), 32);
+  const root = hkdf(
+    SHA256,
+    secret,
+    salt,
+    new TextEncoder().encode("chatapp:x3dh:root"),
+    32
+  );
+  // Initiator's send chain should match responder's receive chain
+  // Initiator's receive chain should match responder's send chain
   const sendInfo = new TextEncoder().encode(
-    role === "initiator" ? "chatapp:x3dh:ck:send:init" : "chatapp:x3dh:ck:send:resp"
+    role === "initiator"
+      ? "chatapp:x3dh:ck:send:init"
+      : "chatapp:x3dh:ck:recv:init" // Responder sends on initiator's recv chain
   );
   const recvInfo = new TextEncoder().encode(
-    role === "initiator" ? "chatapp:x3dh:ck:recv:init" : "chatapp:x3dh:ck:recv:resp"
+    role === "initiator"
+      ? "chatapp:x3dh:ck:recv:init"
+      : "chatapp:x3dh:ck:send:init" // Responder receives on initiator's send chain
   );
   const sendKey = hkdf(SHA256, root, salt, sendInfo, 32);
   const recvKey = hkdf(SHA256, root, salt, recvInfo, 32);
@@ -145,8 +173,14 @@ const dhRatchet = (state, remoteDhPubB64) => {
   state.Ns = 0;
   state.Nr = 0;
 
-  const dh1 = x25519(fromBase64(state.sendDh.secretKey), fromBase64(remoteDhPubB64));
-  const { rootKey: rk1, chainKey: recvCK } = kdfRoot(fromBase64(state.rootKey), dh1);
+  const dh1 = x25519(
+    fromBase64(state.sendDh.secretKey),
+    fromBase64(remoteDhPubB64)
+  );
+  const { rootKey: rk1, chainKey: recvCK } = kdfRoot(
+    fromBase64(state.rootKey),
+    dh1
+  );
 
   const newSend = generateX25519KeyPair();
   const dh2 = x25519(newSend.secretKey, fromBase64(remoteDhPubB64));
@@ -171,7 +205,10 @@ const nextSendMessageKey = (state) => {
   state.sendChainKey = toBase64(chainKey);
   const n = state.Ns;
   state.Ns += 1;
-  return { messageKey, header: { dh: state.sendDh.publicKey, pn: state.PNs, n } };
+  return {
+    messageKey,
+    header: { dh: state.sendDh.publicKey, pn: state.PNs, n },
+  };
 };
 
 const skipMessageKeys = (state, untilN) => {
@@ -204,15 +241,15 @@ const nextRecvMessageKey = (state, header) => {
     state.recvDhPub = header.dh;
     state.Nr = 0;
   }
-  
+
   // If the DH key changed, perform a ratchet step
   if (header.dh !== state.recvDhPub) {
     dhRatchet(state, header.dh);
   }
-  
+
   // Skip any messages we missed
   skipMessageKeys(state, header.n);
-  
+
   // Derive the message key for this message
   const { chainKey, messageKey } = kdfChain(fromBase64(state.recvChainKey));
   state.recvChainKey = toBase64(chainKey);
@@ -221,22 +258,28 @@ const nextRecvMessageKey = (state, header) => {
 };
 
 const aesImport = (rawKey) =>
-  crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
 
 const validateRatchetState = (state) => {
   if (!state) return false;
   // Check that all required string fields are actually strings
-  const stringFields = ['rootKey', 'sendChainKey', 'recvChainKey'];
+  const stringFields = ["rootKey", "sendChainKey", "recvChainKey"];
   for (const field of stringFields) {
-    if (!state[field] || typeof state[field] !== 'string') {
+    if (!state[field] || typeof state[field] !== "string") {
       return false;
     }
   }
   // Check sendDh structure
-  if (!state.sendDh || typeof state.sendDh !== 'object') {
+  if (!state.sendDh || typeof state.sendDh !== "object") {
     return false;
   }
-  if (typeof state.sendDh.publicKey !== 'string' || typeof state.sendDh.secretKey !== 'string') {
+  if (
+    typeof state.sendDh.publicKey !== "string" ||
+    typeof state.sendDh.secretKey !== "string"
+  ) {
     return false;
   }
   return true;
@@ -259,26 +302,47 @@ export const ensureSessionWithPeer = async (me, peerId) => {
   if (!myDevice) throw new Error("No local device keys");
 
   const bundle = await fetchPreKeyBundle(peerId);
-  
+
   // Validate bundle structure
-  if (!bundle.signedPreKey || typeof bundle.signedPreKey.publicKey !== 'string') {
-    throw new Error("Invalid bundle structure: signedPreKey.publicKey must be a string");
+  if (
+    !bundle.signedPreKey ||
+    typeof bundle.signedPreKey.publicKey !== "string"
+  ) {
+    throw new Error(
+      "Invalid bundle structure: signedPreKey.publicKey must be a string"
+    );
   }
-  if (typeof bundle.identityKey !== 'string') {
+  if (typeof bundle.identityKey !== "string") {
     throw new Error("Invalid bundle structure: identityKey must be a string");
   }
-  if (!bundle.oneTimePreKey || typeof bundle.oneTimePreKey.publicKey !== 'string') {
-    throw new Error("Invalid bundle structure: oneTimePreKey.publicKey must be a string");
+  if (
+    !bundle.oneTimePreKey ||
+    typeof bundle.oneTimePreKey.publicKey !== "string"
+  ) {
+    throw new Error(
+      "Invalid bundle structure: oneTimePreKey.publicKey must be a string"
+    );
   }
-  
+
   const eph = generateX25519KeyPair();
 
-  const dh1 = x25519(fromBase64(myDevice.identity.secretKey), fromBase64(bundle.signedPreKey.publicKey));
+  const dh1 = x25519(
+    fromBase64(myDevice.identity.secretKey),
+    fromBase64(bundle.signedPreKey.publicKey)
+  );
   const dh2 = x25519(fromBase64(eph.secretKey), fromBase64(bundle.identityKey));
-  const dh3 = x25519(fromBase64(eph.secretKey), fromBase64(bundle.signedPreKey.publicKey));
-  const dh4 = x25519(fromBase64(eph.secretKey), fromBase64(bundle.oneTimePreKey.publicKey));
+  const dh3 = x25519(
+    fromBase64(eph.secretKey),
+    fromBase64(bundle.signedPreKey.publicKey)
+  );
+  const dh4 = x25519(
+    fromBase64(eph.secretKey),
+    fromBase64(bundle.oneTimePreKey.publicKey)
+  );
 
-  const concat = new Uint8Array(dh1.length + dh2.length + dh3.length + dh4.length);
+  const concat = new Uint8Array(
+    dh1.length + dh2.length + dh3.length + dh4.length
+  );
   concat.set(dh1, 0);
   concat.set(dh2, dh1.length);
   concat.set(dh3, dh1.length + dh2.length);
@@ -322,21 +386,42 @@ const buildResponderSession = async (me, peerId, handshake, ratchetHeader) => {
     throw new Error("Invalid handshake: missing identityKey or ephPubKey");
   }
 
-  const preKey = myDevice.oneTimePreKeys.find((pk) => pk.keyId === handshake.usedPreKeyId);
+  const preKey = myDevice.oneTimePreKeys.find(
+    (pk) => pk.keyId === handshake.usedPreKeyId
+  );
   if (!preKey) {
-    console.error("[crypto] Available pre-key IDs:", myDevice.oneTimePreKeys.map(pk => pk.keyId));
-    throw new Error(`One-time pre-key not found/expired. Looking for: ${handshake.usedPreKeyId}`);
+    console.error(
+      "[crypto] Available pre-key IDs:",
+      myDevice.oneTimePreKeys.map((pk) => pk.keyId)
+    );
+    throw new Error(
+      `One-time pre-key not found/expired. Looking for: ${handshake.usedPreKeyId}`
+    );
   }
   if (preKey.used) {
     throw new Error("One-time pre-key already used");
   }
 
-  const dh1 = x25519(fromBase64(myDevice.signedPreKey.secretKey), fromBase64(handshake.identityKey));
-  const dh2 = x25519(fromBase64(myDevice.identity.secretKey), fromBase64(handshake.ephPubKey));
-  const dh3 = x25519(fromBase64(myDevice.signedPreKey.secretKey), fromBase64(handshake.ephPubKey));
-  const dh4 = x25519(fromBase64(preKey.secretKey), fromBase64(handshake.ephPubKey));
+  const dh1 = x25519(
+    fromBase64(myDevice.signedPreKey.secretKey),
+    fromBase64(handshake.identityKey)
+  );
+  const dh2 = x25519(
+    fromBase64(myDevice.identity.secretKey),
+    fromBase64(handshake.ephPubKey)
+  );
+  const dh3 = x25519(
+    fromBase64(myDevice.signedPreKey.secretKey),
+    fromBase64(handshake.ephPubKey)
+  );
+  const dh4 = x25519(
+    fromBase64(preKey.secretKey),
+    fromBase64(handshake.ephPubKey)
+  );
 
-  const concat = new Uint8Array(dh1.length + dh2.length + dh3.length + dh4.length);
+  const concat = new Uint8Array(
+    dh1.length + dh2.length + dh3.length + dh4.length
+  );
   concat.set(dh1, 0);
   concat.set(dh2, dh1.length);
   concat.set(dh3, dh1.length + dh2.length);
@@ -352,12 +437,11 @@ const buildResponderSession = async (me, peerId, handshake, ratchetHeader) => {
   await storeDevice(me, { ...myDevice });
 
   const ratchetState = makeInitialRatchetState(root, sendKey, recvKey);
-  
+
   // For the first message, we need to set recvDhPub to the initiator's send DH public key
   // This must be set BEFORE processing the first message
   if (ratchetHeader?.dh) {
     ratchetState.recvDhPub = ratchetHeader.dh;
-    // Also set the initial message number expectation
     // The initiator's first message will have n=0, so we should be ready to receive it
     ratchetState.Nr = 0;
   } else {
@@ -401,7 +485,10 @@ const decryptAesGcm = async (rawKeyB64, ciphertextB64, ivB64) => {
 export const encryptForPeer = async (me, peerId, plaintext) => {
   const { session, handshakePayload } = await ensureSessionWithPeer(me, peerId);
   const { messageKey, header } = nextSendMessageKey(session.ratchet);
-  const { ciphertext, iv } = await encryptAesGcm(toBase64(messageKey), plaintext);
+  const { ciphertext, iv } = await encryptAesGcm(
+    toBase64(messageKey),
+    plaintext
+  );
   debugLog("[crypto] encryptForPeer ciphertext len", ciphertext.length);
 
   await storeSession(me, peerId, session);
@@ -432,12 +519,23 @@ export const decryptFromPeer = async (me, peerId, payload) => {
         debugLog("[crypto] Responder session created successfully");
       } catch (error) {
         console.error("[crypto] Failed to build responder session:", error);
+        // Check if it's a pre-key not found error - this means old message can't be decrypted
+        if (
+          error.message.includes("pre-key not found") ||
+          error.message.includes("One-time pre-key")
+        ) {
+          throw new Error("__UNRECOVERABLE__");
+        }
         throw new Error(`Failed to establish session: ${error.message}`);
       }
     }
 
     if (!session) {
-      throw new Error("No session available to decrypt. Missing X3DH handshake data.");
+      // No session and no X3DH handshake - this is an old message that can't be decrypted
+      if (!payload.handshake?.x3dh) {
+        throw new Error("__UNRECOVERABLE__");
+      }
+      throw new Error("__UNRECOVERABLE__");
     }
 
     const header = payload.handshake?.ratchet;
@@ -455,7 +553,11 @@ export const decryptFromPeer = async (me, peerId, payload) => {
       debugLog("[crypto] Derived new message key");
     }
 
-    const plaintext = await decryptAesGcm(toBase64(messageKey), payload.ciphertext, payload.iv);
+    const plaintext = await decryptAesGcm(
+      toBase64(messageKey),
+      payload.ciphertext,
+      payload.iv
+    );
     debugLog("[crypto] decryptFromPeer ok len", plaintext.length);
 
     await storeSession(me, peerId, session);
@@ -482,3 +584,21 @@ export const ensurePrekeysAvailable = async (me) => {
   }
 };
 
+// Reset session with a peer (useful when session gets out of sync)
+export const resetPeerSession = async (me, peerId) => {
+  const sessions = await loadSessions(me);
+  if (sessions[peerId]) {
+    delete sessions[peerId];
+    await saveSessions(me, sessions);
+    debugLog(`[crypto] Session with ${peerId} has been reset`);
+  }
+};
+
+// Check if a decrypt error is unrecoverable (old message that can't be decrypted)
+export const isUnrecoverableError = (error) => {
+  return (
+    error?.message === "__UNRECOVERABLE__" ||
+    error?.message?.includes("pre-key not found") ||
+    error?.message?.includes("One-time pre-key")
+  );
+};

@@ -79,11 +79,39 @@ export const useAuthStore = create((set, get) => ({
       const res = await axiosInstance.put("/auth/update-profile", data);
       set({ authUser: res.data });
       toast.success("Profile updated successfully");
+      return true;
     } catch (error) {
       console.log("error in update profile:", error);
       toast.error(error.response.data.message);
+      return false;
     } finally {
       set({ isUpdatingProfile: false });
+    }
+  },
+
+  changePassword: async (data) => {
+    try {
+      await axiosInstance.put("/auth/change-password", data);
+      toast.success("Password changed successfully");
+      return true;
+    } catch (error) {
+      console.log("error in change password:", error);
+      toast.error(error.response?.data?.message || "Failed to change password");
+      return false;
+    }
+  },
+
+  deleteAccount: async () => {
+    try {
+      await axiosInstance.delete("/auth/delete-account");
+      set({ authUser: null });
+      toast.success("Account deleted successfully");
+      get().disconnectSocket();
+      return true;
+    } catch (error) {
+      console.log("error in delete account:", error);
+      toast.error(error.response?.data?.message || "Failed to delete account");
+      return false;
     }
   },
 
