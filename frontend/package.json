@@ -10,20 +10,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@stablelib/ed25519": "^1.0.3",
+    "@stablelib/hkdf": "^1.0.1",
+    "@stablelib/random": "^1.0.2",
+    "@stablelib/sha256": "^1.0.1",
+    "@stablelib/x25519": "^1.0.3",
     "axios": "^1.13.2",
     "chat-app": "file:..",
+    "emoji-picker-react": "^4.16.1",
     "lucide-react": "^0.555.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.9.6",
     "socket.io-client": "^4.8.1",
-    "zustand": "^5.0.9",
-    "@stablelib/ed25519": "^1.0.3",
-    "@stablelib/x25519": "^1.0.3",
-    "@stablelib/random": "^1.0.2",
-    "@stablelib/hkdf": "^1.0.1",
-    "@stablelib/sha256": "^1.0.1"
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

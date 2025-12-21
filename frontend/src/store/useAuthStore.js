@@ -131,6 +131,21 @@ export const useAuthStore = create((set, get) => ({
     socket.on("getOnlineUsers", (userIds) => {
       set({ onlineUsers: userIds });
     });
+
+    // Listen for new messages to update sidebar order (for unselected chats)
+    socket.on("newMessage", (newMessage) => {
+      // Dynamically import to avoid circular dependency
+      import("./useChatStore").then(({ useChatStore }) => {
+        const chatStore = useChatStore.getState();
+        const selectedUser = chatStore.selectedUser;
+
+        // Only move to top if this message is NOT from the currently selected user
+        // (selected user messages are handled in subscribeToMessages)
+        if (!selectedUser || newMessage.senderId !== selectedUser._id) {
+          chatStore.moveUserToTop(newMessage.senderId);
+        }
+      });
+    });
   },
   disconnectSocket: () => {
     if (get().socket?.connected) get().socket.disconnect();

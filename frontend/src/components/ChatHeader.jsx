@@ -1,9 +1,9 @@
-import { X } from "lucide-react";
+import { X, ShieldCheck, Lock } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 
 const ChatHeader = () => {
-  const { selectedUser, setSelectedUser } = useChatStore();
+  const { selectedUser, setSelectedUser, encryptionEnabled } = useChatStore();
   const { onlineUsers } = useAuthStore();
   const isOnline = onlineUsers.includes(selectedUser._id);
 
@@ -46,6 +46,16 @@ const ChatHeader = () => {
               >
                 {isOnline ? "Active now" : "Offline"}
               </p>
+              {/* E2EE indicator */}
+              {encryptionEnabled && (
+                <span
+                  className="flex items-center gap-1 ml-2 text-xs text-success tooltip tooltip-bottom"
+                  data-tip="Messages are encrypted with AES-256-GCM"
+                >
+                  <Lock className="size-3" />
+                  <span className="hidden sm:inline">Encrypted</span>
+                </span>
+              )}
             </div>
           </div>
         </div>

@@ -1,14 +1,38 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { Image, Send, X, Smile, Paperclip } from "lucide-react";
 import toast from "react-hot-toast";
+import EmojiPicker from "emoji-picker-react";
 
 const MessageInput = () => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
   const [isFocused, setIsFocused] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef(null);
+  const emojiPickerRef = useRef(null);
+  const inputRef = useRef(null);
   const { sendMessage } = useChatStore();
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleEmojiClick = (emojiData) => {
+    setText((prev) => prev + emojiData.emoji);
+    inputRef.current?.focus();
+  };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -100,6 +124,7 @@ const MessageInput = () => {
         >
           <input
             type="text"
+            ref={inputRef}
             className="w-full input input-bordered rounded-full pr-12 bg-base-200/50 
                        focus:bg-base-100 focus:border-primary/50 transition-all duration-200
                        placeholder:text-base-content/40"
@@ -109,12 +134,37 @@ const MessageInput = () => {
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
           />
-          <button
-            type="button"
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/40 hover:text-base-content/70 transition-colors"
+
+          {/* Emoji Picker Button & Container */}
+          <div
+            className="absolute right-3 top-1/2 -translate-y-1/2"
+            ref={emojiPickerRef}
           >
-            <Smile size={20} />
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className={`text-base-content/40 hover:text-base-content/70 transition-colors ${
+                showEmojiPicker ? "text-primary" : ""
+              }`}
+            >
+              <Smile size={20} />
+            </button>
+
+            {/* Emoji Picker Dropdown */}
+            {showEmojiPicker && (
+              <div className="absolute bottom-10 right-0 z-50">
+                <EmojiPicker
+                  onEmojiClick={handleEmojiClick}
+                  width={300}
+                  height={400}
+                  searchPlaceHolder="Search emoji..."
+                  previewConfig={{ showPreview: false }}
+                  skinTonesDisabled
+                  lazyLoadEmojis
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Send Button */}

@@ -6,6 +6,32 @@ import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton";
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
+import { Lock, LockOpen, AlertCircle } from "lucide-react";
+
+// Encryption status indicator component
+const EncryptionBadge = ({ message }) => {
+  if (!message.isEncrypted) {
+    return (
+      <span className="tooltip tooltip-left" data-tip="Unencrypted message">
+        <LockOpen className="size-3 text-warning/70" />
+      </span>
+    );
+  }
+
+  if (message.decryptionFailed) {
+    return (
+      <span className="tooltip tooltip-left" data-tip="Decryption failed">
+        <AlertCircle className="size-3 text-error/70" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="tooltip tooltip-left" data-tip="AES-256-GCM encrypted">
+      <Lock className="size-3 text-success/70" />
+    </span>
+  );
+};
 
 const ChatContainer = () => {
   const {
@@ -15,6 +41,7 @@ const ChatContainer = () => {
     selectedUser,
     subscribeToMessages,
     unsubscribeFromMessages,
+    encryptionEnabled,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
@@ -114,7 +141,7 @@ const ChatContainer = () => {
                   isOwnMessage
                     ? "bg-primary text-primary-content"
                     : "bg-base-200 text-base-content"
-                }`}
+                } ${message.decryptionFailed ? "opacity-60" : ""}`}
               >
                 {message.image && (
                   <img
@@ -124,17 +151,30 @@ const ChatContainer = () => {
                     onClick={() => window.open(message.image, "_blank")}
                   />
                 )}
-                {message.text && (
-                  <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">
-                    {message.text}
+                {/* Display decrypted text or fallback to original text */}
+                {(message.decryptedText || message.text) && (
+                  <p
+                    className={`text-[15px] leading-relaxed break-words whitespace-pre-wrap ${
+                      message.decryptionFailed ? "italic" : ""
+                    }`}
+                  >
+                    {message.decryptedText ?? message.text}
                   </p>
                 )}
               </div>
 
-              {/* Time for non-first messages */}
+              {/* Time for non-first messages with encryption indicator */}
               {!showAvatar && (
-                <div className="chat-footer text-xs text-base-content/40 mt-0.5">
+                <div className="chat-footer text-xs text-base-content/40 mt-0.5 flex items-center gap-1">
                   {formatMessageTime(message.createdAt)}
+                  <EncryptionBadge message={message} />
+                </div>
+              )}
+
+              {/* Encryption indicator for first message in group */}
+              {showAvatar && (
+                <div className="chat-footer mt-0.5 flex items-center gap-1">
+                  <EncryptionBadge message={message} />
                 </div>
               )}
             </div>

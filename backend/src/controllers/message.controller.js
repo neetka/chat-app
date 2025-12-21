@@ -8,11 +8,64 @@ import { sendOfflineNotification } from "../lib/email.js";
 export const getUsersForSidebar = async (req, res) => {
   try {
     const loggedInUserId = req.user._id;
-    const filteredUsers = await User.find({
+
+    // Get all users except logged in user
+    const allUsers = await User.find({
       _id: { $ne: loggedInUserId },
     }).select("-password");
 
-    res.status(200).json(filteredUsers);
+    // Get the last message timestamp for each conversation
+    const lastMessages = await Message.aggregate([
+      {
+        $match: {
+          $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
+        },
+      },
+      {
+        // Get the other user in the conversation
+        $addFields: {
+          otherUserId: {
+            $cond: {
+              if: { $eq: ["$senderId", loggedInUserId] },
+              then: "$receiverId",
+              else: "$senderId",
+            },
+          },
+        },
+      },
+      {
+        // Group by the other user and get the latest message time
+        $group: {
+          _id: "$otherUserId",
+          lastMessageAt: { $max: "$createdAt" },
+        },
+      },
+    ]);
+
+    // Create a map of odtherUserId -> lastMessageAt
+    const lastMessageMap = new Map();
+    lastMessages.forEach((msg) => {
+      lastMessageMap.set(msg._id.toString(), msg.lastMessageAt);
+    });
+
+    // Sort users: those with recent messages first, then by name
+    const sortedUsers = allUsers.sort((a, b) => {
+      const aLastMsg = lastMessageMap.get(a._id.toString());
+      const bLastMsg = lastMessageMap.get(b._id.toString());
+
+      // If both have messages, sort by most recent
+      if (aLastMsg && bLastMsg) {
+        return new Date(bLastMsg) - new Date(aLastMsg);
+      }
+      // If only a has messages, a comes first
+      if (aLastMsg) return -1;
+      // If only b has messages, b comes first
+      if (bLastMsg) return 1;
+      // If neither has messages, sort alphabetically by name
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+    res.status(200).json(sortedUsers);
   } catch (error) {
     console.error("Error in getUsersForSidebar: ", error.message);
     res.status(500).json({ error: "Internal server error" });
