@@ -7,94 +7,88 @@ config();
 const seedUsers = [
   // Female Users
   {
-    email: "emma.thompson@example.com",
-    fullName: "Emma Thompson",
+    email: "ananya.verma98@gmail.com",
+    fullName: "Ananya Verma",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/women/1.jpg",
   },
   {
-    email: "olivia.miller@example.com",
-    fullName: "Olivia Miller",
+    email: "riyasharma.work@gmail.com",
+    fullName: "Riya Sharma",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/women/2.jpg",
   },
   {
-    email: "sophia.davis@example.com",
-    fullName: "Sophia Davis",
+    email: "pooja.mehta22@yahoo.com",
+    fullName: "Pooja Mehta",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/women/3.jpg",
   },
   {
-    email: "ava.wilson@example.com",
-    fullName: "Ava Wilson",
+    email: "sneha.kulkarni.dev@gmail.com",
+    fullName: "Sneha Kulkarni",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/women/4.jpg",
   },
   {
-    email: "isabella.brown@example.com",
-    fullName: "Isabella Brown",
+    email: "kritika.singh01@gmail.com",
+    fullName: "Kritika Singh",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/women/5.jpg",
   },
   {
-    email: "mia.johnson@example.com",
-    fullName: "Mia Johnson",
+    email: "neha.joshi19@gmail.com",
+    fullName: "Neha Joshi",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/women/6.jpg",
   },
   {
-    email: "charlotte.williams@example.com",
-    fullName: "Charlotte Williams",
+    email: "aditi.malhotra.office@gmail.com",
+    fullName: "Aditi Malhotra",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/women/7.jpg",
-  },
-  {
-    email: "amelia.garcia@example.com",
-    fullName: "Amelia Garcia",
-    password: "123456",
-    profilePic: "https://randomuser.me/api/portraits/women/8.jpg",
   },
 
   // Male Users
   {
-    email: "james.anderson@example.com",
-    fullName: "James Anderson",
+    email: "rahul.khanna91@gmail.com",
+    fullName: "Rahul Khanna",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/men/1.jpg",
   },
   {
-    email: "william.clark@example.com",
-    fullName: "William Clark",
+    email: "amangupta.cse@gmail.com",
+    fullName: "Aman Gupta",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/men/2.jpg",
   },
   {
-    email: "benjamin.taylor@example.com",
-    fullName: "Benjamin Taylor",
+    email: "siddharth.jain.dev@gmail.com",
+    fullName: "Siddharth Jain",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/men/3.jpg",
   },
   {
-    email: "lucas.moore@example.com",
-    fullName: "Lucas Moore",
+    email: "rohit.bansal27@yahoo.com",
+    fullName: "Rohit Bansal",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/men/4.jpg",
   },
   {
-    email: "henry.jackson@example.com",
-    fullName: "Henry Jackson",
+    email: "kunal.arora.work@gmail.com",
+    fullName: "Kunal Arora",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/men/5.jpg",
   },
   {
-    email: "alexander.martin@example.com",
-    fullName: "Alexander Martin",
+    email: "aditya.chauhan98@gmail.com",
+    fullName: "Aditya Chauhan",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/men/6.jpg",
   },
   {
-    email: "daniel.rodriguez@example.com",
-    fullName: "Daniel Rodriguez",
+    email: "vikas.patel.it@gmail.com",
+    fullName: "Vikas Patel",
     password: "123456",
     profilePic: "https://randomuser.me/api/portraits/men/7.jpg",
   },
@@ -103,7 +97,6 @@ const seedUsers = [
 const seedDatabase = async () => {
   try {
     await connectDB();
-
     await User.insertMany(seedUsers);
     console.log("Database seeded successfully");
   } catch (error) {

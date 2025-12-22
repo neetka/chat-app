@@ -1,12 +1,12 @@
 import { useChatStore } from "../store/useChatStore";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton";
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
-import { Lock, LockOpen, AlertCircle } from "lucide-react";
+import { Lock, LockOpen, AlertCircle, ChevronDown } from "lucide-react";
 
 // Encryption status indicator component
 const EncryptionBadge = ({ message }) => {
@@ -42,7 +42,10 @@ const ChatContainer = () => {
     subscribeToMessages,
     unsubscribeFromMessages,
     encryptionEnabled,
+    deleteMessage,
+    deleteForMe,
   } = useChatStore();
+  const [openMenuFor, setOpenMenuFor] = useState(null);
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
 
@@ -142,7 +145,45 @@ const ChatContainer = () => {
                     ? "bg-primary text-primary-content"
                     : "bg-base-200 text-base-content"
                 } ${message.decryptionFailed ? "opacity-60" : ""}`}
+                style={{ position: "relative" }}
               >
+                {isOwnMessage && (
+                  <div className="absolute top-1 right-1 z-20">
+                    <button
+                      onClick={() =>
+                        setOpenMenuFor(openMenuFor === message._id ? null : message._id)
+                      }
+                      className="p-1 rounded hover:bg-base-300/60"
+                      aria-label="Message menu"
+                      title="Options"
+                    >
+                      <ChevronDown className="size-4 text-base-content/60" />
+                    </button>
+
+                    {openMenuFor === message._id && (
+                      <div className="mt-2 bg-base-100 border rounded shadow-md text-sm right-0 absolute w-40">
+                        <button
+                          className="w-full text-left px-3 py-2 hover:bg-base-200"
+                          onClick={() => {
+                            deleteForMe(message._id);
+                            setOpenMenuFor(null);
+                          }}
+                        >
+                          Delete for me
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-2 hover:bg-base-200 text-error"
+                          onClick={() => {
+                            deleteMessage(message._id);
+                            setOpenMenuFor(null);
+                          }}
+                        >
+                          Delete for everyone
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {message.image && (
                   <img
                     src={message.image}

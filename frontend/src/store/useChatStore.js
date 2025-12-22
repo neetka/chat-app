@@ -191,11 +191,19 @@ export const useChatStore = create((set, get) => ({
       // Move sender to top of sidebar (most recent chat)
       get().moveUserToTop(newMessage.senderId);
     });
+    
+    // Handle remote deletion events
+    socket.on("deleteMessage", ({ messageId }) => {
+      const currentMessages = get().messages || [];
+      const updated = currentMessages.filter((m) => m._id !== messageId);
+      set({ messages: updated });
+    });
   },
 
   unsubscribeFromMessages: () => {
     const socket = useAuthStore.getState().socket;
     socket.off("newMessage");
+    socket.off("deleteMessage");
   },
 
   setSelectedUser: (selectedUser) => set({ selectedUser }),
@@ -224,5 +232,29 @@ export const useChatStore = create((set, get) => ({
     const { encryptionEnabled } = get();
     set({ encryptionEnabled: !encryptionEnabled });
     toast.success(`Encryption ${!encryptionEnabled ? "enabled" : "disabled"}`);
+  },
+  
+  // Delete message on server (Delete for everyone) - only sender allowed
+  deleteMessage: async (messageId) => {
+    const { messages } = get();
+    try {
+      await axiosInstance.delete(`/messages/${messageId}`);
+
+      // Remove locally as well
+      const updated = (messages || []).filter((m) => m._id !== messageId);
+      set({ messages: updated });
+      toast.success("Message deleted for everyone");
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      toast.error(error.response?.data?.message || "Failed to delete message");
+    }
+  },
+
+  // Remove message only from current user's view
+  deleteForMe: (messageId) => {
+    const { messages } = get();
+    const updated = (messages || []).filter((m) => m._id !== messageId);
+    set({ messages: updated });
+    toast.success("Message removed from your view");
   },
 }));

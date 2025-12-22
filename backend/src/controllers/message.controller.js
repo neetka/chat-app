@@ -159,3 +159,36 @@ export const sendMessage = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+export const deleteMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const message = await Message.findById(id);
+    if (!message) return res.status(404).json({ error: "Message not found" });
+
+    // Only the sender can perform delete-for-everyone
+    if (message.senderId.toString() !== userId.toString()) {
+      return res.status(403).json({ error: "Not authorized to delete this message" });
+    }
+
+    // Delete from DB
+    await Message.findByIdAndDelete(id);
+
+    // Notify the receiver via socket (if online)
+    try {
+      const receiverSocketId = getReceiverSocketId(message.receiverId.toString());
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("deleteMessage", { messageId: id });
+      }
+    } catch (e) {
+      console.error("Error emitting deleteMessage socket event:", e.message);
+    }
+
+    return res.status(200).json({ message: "Message deleted" });
+  } catch (error) {
+    console.error("Error in deleteMessage controller:", error.message);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
