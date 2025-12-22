@@ -6,7 +6,7 @@ import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton";
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
-import { Lock, LockOpen, AlertCircle, ChevronDown } from "lucide-react";
+import { Lock, LockOpen, AlertCircle, ChevronDown, Check, CheckCheck, Timer, Smile, Plus } from "lucide-react";
 
 // Encryption status indicator component
 const EncryptionBadge = ({ message }) => {
@@ -37,25 +37,58 @@ const ChatContainer = () => {
   const {
     messages,
     getMessages,
+    getGroupMessages,
     isMessagesLoading,
     selectedUser,
+    selectedGroup,
     subscribeToMessages,
     unsubscribeFromMessages,
     encryptionEnabled,
     deleteMessage,
     deleteForMe,
+    editMessage,
+    markMessagesAsSeen,
+    cleanupExpiredMessages,
+    addReaction,
   } = useChatStore();
-  const [openMenuFor, setOpenMenuFor] = useState(null);
   const { authUser } = useAuthStore();
+  const [openMenuFor, setOpenMenuFor] = useState(null);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editText, setEditText] = useState("");
+
+  const startEditing = (message) => {
+    setEditingMessageId(message._id);
+    setEditText(message.decryptedText || message.text || "");
+  };
+
+  const cancelEditing = () => {
+    setEditingMessageId(null);
+    setEditText("");
+  };
+
+  const handleSaveEdit = async (messageId) => {
+    if (!editText.trim()) return;
+    await editMessage(messageId, editText);
+    setEditingMessageId(null);
+    setEditText("");
+  };
+  
   const messageEndRef = useRef(null);
 
   useEffect(() => {
-    getMessages(selectedUser._id);
+    if (selectedUser) {
+        getMessages(selectedUser._id);
+    } else if (selectedGroup) {
+        getGroupMessages(selectedGroup._id);
+    }
+    
     subscribeToMessages();
     return () => unsubscribeFromMessages();
   }, [
-    selectedUser._id,
+    selectedUser?._id,
+    selectedGroup?._id,
     getMessages,
+    getGroupMessages,
     subscribeToMessages,
     unsubscribeFromMessages,
   ]);
@@ -64,7 +97,24 @@ const ChatContainer = () => {
     if (messageEndRef.current && messages) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+    
+    // Mark messages as seen when we open the chat or receive new messages
+    if (selectedUser && messages.length > 0) {
+        // Find last message from other user that is not seen
+        const unseenMessages = messages.some(m => m.senderId === selectedUser._id && m.status !== "seen");
+        if (unseenMessages) {
+            markMessagesAsSeen(selectedUser._id);
+        }
+    }
+  }, [messages, selectedUser, markMessagesAsSeen]);
+
+  // Cleanup expired messages every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+        cleanupExpiredMessages();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cleanupExpiredMessages]);
 
   if (isMessagesLoading) {
     return (
@@ -96,10 +146,15 @@ const ChatContainer = () => {
         )}
 
         {messages.map((message, index) => {
-          const isOwnMessage = message.senderId === authUser._id;
+          const isOwnMessage = message.senderId === authUser._id || message.senderId._id === authUser._id;
           const showAvatar =
             index === 0 || messages[index - 1]?.senderId !== message.senderId;
-
+            
+          // Helper to get sender profile
+          const senderProfile = isOwnMessage ? authUser : (selectedGroup 
+                ? (typeof message.senderId === 'object' ? message.senderId : selectedGroup.members.find(m => m._id === message.senderId))
+                : selectedUser);
+          
           return (
             <div
               key={message._id}
@@ -115,11 +170,7 @@ const ChatContainer = () => {
                   } ${!showAvatar ? "invisible" : ""}`}
                 >
                   <img
-                    src={
-                      isOwnMessage
-                        ? authUser.profilePic || "/avatar.png"
-                        : selectedUser.profilePic || "/avatar.png"
-                    }
+                    src={senderProfile?.profilePic || "/avatar.png"}
                     alt="profile pic"
                     className="object-cover"
                   />
@@ -130,7 +181,7 @@ const ChatContainer = () => {
               {showAvatar && (
                 <div className="chat-header mb-1 flex items-center gap-2">
                   <span className="font-medium text-sm">
-                    {isOwnMessage ? "You" : selectedUser.fullName}
+                    {senderProfile?.fullName || "User"}
                   </span>
                   <time className="text-xs text-base-content/50">
                     {formatMessageTime(message.createdAt)}
@@ -140,15 +191,14 @@ const ChatContainer = () => {
 
               {/* Message Bubble */}
               <div
-                className={`chat-bubble max-w-[85%] sm:max-w-[70%] shadow-sm ${
+                className={`chat-bubble max-w-[85%] sm:max-w-[70%] shadow-sm group ${
                   isOwnMessage
                     ? "bg-primary text-primary-content"
                     : "bg-base-200 text-base-content"
                 } ${message.decryptionFailed ? "opacity-60" : ""}`}
                 style={{ position: "relative" }}
               >
-                {isOwnMessage && (
-                  <div className="absolute top-1 right-1 z-20">
+                <div className="absolute top-1 right-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() =>
                         setOpenMenuFor(openMenuFor === message._id ? null : message._id)
@@ -161,7 +211,36 @@ const ChatContainer = () => {
                     </button>
 
                     {openMenuFor === message._id && (
-                      <div className="mt-2 bg-base-100 border rounded shadow-md text-sm right-0 absolute w-40">
+                      <div className="mt-2 bg-base-100 border rounded shadow-md text-sm right-0 absolute w-60 z-30">
+                        <div className="p-2 border-b border-base-200 flex flex-wrap gap-1 justify-center">
+                            {["👍", "❤️", "😂", "😮", "😢", "😡", "🔥", "🎉", "👀", "💯", "👎", "🚀"].map((emoji) => (
+                                <button
+                                    key={emoji}
+                                    onClick={() => {
+                                        addReaction(message._id, emoji);
+                                        setOpenMenuFor(null);
+                                    }}
+                                    className={`p-1.5 rounded-full hover:bg-base-200 transition-colors text-lg
+                                        ${message.reactions?.some(r => r.fromId === authUser._id && r.emoji === emoji) ? 'bg-primary/10' : ''}
+                                    `}
+                                >
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
+                        
+                        {isOwnMessage && (
+                            <button
+                              className="w-full text-left px-3 py-2 hover:bg-base-200"
+                              onClick={() => {
+                                startEditing(message);
+                                setOpenMenuFor(null);
+                              }}
+                            >
+                              Edit message
+                            </button>
+                        )}
+                        
                         <button
                           className="w-full text-left px-3 py-2 hover:bg-base-200"
                           onClick={() => {
@@ -171,19 +250,22 @@ const ChatContainer = () => {
                         >
                           Delete for me
                         </button>
-                        <button
-                          className="w-full text-left px-3 py-2 hover:bg-base-200 text-error"
-                          onClick={() => {
-                            deleteMessage(message._id);
-                            setOpenMenuFor(null);
-                          }}
-                        >
-                          Delete for everyone
-                        </button>
+                        
+                        {isOwnMessage && (
+                            <button
+                              className="w-full text-left px-3 py-2 hover:bg-base-200 text-error"
+                              onClick={() => {
+                                deleteMessage(message._id);
+                                setOpenMenuFor(null);
+                              }}
+                            >
+                              Delete for everyone
+                            </button>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
+                
                 {message.image && (
                   <img
                     src={message.image}
@@ -192,15 +274,79 @@ const ChatContainer = () => {
                     onClick={() => window.open(message.image, "_blank")}
                   />
                 )}
-                {/* Display decrypted text or fallback to original text */}
-                {(message.decryptedText || message.text) && (
-                  <p
-                    className={`text-[15px] leading-relaxed break-words whitespace-pre-wrap ${
-                      message.decryptionFailed ? "italic" : ""
-                    }`}
-                  >
-                    {message.decryptedText ?? message.text}
-                  </p>
+                
+                {/* Editing Mode */}
+                {editingMessageId === message._id ? (
+                    <div className="min-w-[200px]">
+                        <textarea
+                            className="w-full p-2 text-base-content bg-base-100 rounded border border-base-300 focus:outline-none focus:ring-1 focus:ring-primary mb-2"
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            rows={2}
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button 
+                                className="btn btn-xs btn-ghost"
+                                onClick={cancelEditing}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                className="btn btn-xs btn-primary"
+                                onClick={() => handleSaveEdit(message._id)}
+                            >
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    /* Display decrypted text or fallback to original text */
+                    (message.decryptedText || message.text) && (
+                      <div className="flex flex-col">
+                        <p
+                          className={`text-[15px] leading-relaxed break-words whitespace-pre-wrap ${
+                            message.decryptionFailed ? "italic" : ""
+                          }`}
+                        >
+                           {message.decryptedText ?? message.text}
+                           {message.isEdited && <span className="text-[10px] opacity-50 ml-1">(edited)</span>}
+                        </p>
+                        
+                      {/* Reactions Display */}
+                      {message.reactions && message.reactions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5 -mb-2 relative z-10">
+                            {Object.entries(
+                                message.reactions.reduce((acc, curr) => {
+                                    acc[curr.emoji] = (acc[curr.emoji] || 0) + 1;
+                                    return acc;
+                                }, {})
+                            ).map(([emoji, count]) => {
+                                const hasReacted = message.reactions.some(r => r.fromId === authUser._id && r.emoji === emoji);
+                                return (
+                                    <button
+                                        key={emoji}
+                                        onClick={() => addReaction(message._id, emoji)}
+                                        className={`badge badge-sm gap-1 border-none shadow-sm text-xs h-5 px-1.5 
+                                            ${hasReacted 
+                                                ? 'bg-primary/20 text-primary hover:bg-primary/30' 
+                                                : 'bg-base-200 text-base-content/70 hover:bg-base-300'}`}
+                                    >
+                                        <span>{emoji}</span>
+                                        <span className="text-[10px] opacity-70">{count}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                      )}
+
+                      {message.expiresAt && (
+                          <div className="text-[10px] opacity-50 flex items-center gap-1 mt-1">
+                              <Timer className="size-3" />
+                              <span>Expiring</span>
+                          </div>
+                        )}
+                      </div>
+                    )
                 )}
               </div>
 
@@ -209,6 +355,17 @@ const ChatContainer = () => {
                 <div className="chat-footer text-xs text-base-content/40 mt-0.5 flex items-center gap-1">
                   {formatMessageTime(message.createdAt)}
                   <EncryptionBadge message={message} />
+                  {isOwnMessage && (
+                      <span className="ml-1">
+                          {message.status === "seen" ? (
+                              <CheckCheck className="size-3 text-blue-500" />
+                          ) : message.status === "delivered" ? (
+                              <CheckCheck className="size-3" />
+                          ) : (
+                              <Check className="size-3" />
+                          )}
+                      </span>
+                  )}
                 </div>
               )}
 
@@ -216,6 +373,17 @@ const ChatContainer = () => {
               {showAvatar && (
                 <div className="chat-footer mt-0.5 flex items-center gap-1">
                   <EncryptionBadge message={message} />
+                  {isOwnMessage && (
+                      <span className="ml-1">
+                          {message.status === "seen" ? (
+                              <CheckCheck className="size-3 text-blue-500" />
+                          ) : message.status === "delivered" ? (
+                              <CheckCheck className="size-3" />
+                          ) : (
+                              <Check className="size-3" />
+                          )}
+                      </span>
+                  )}
                 </div>
               )}
             </div>

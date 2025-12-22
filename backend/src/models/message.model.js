@@ -9,7 +9,12 @@ const messageSchema = new mongoose.Schema(
         receiverId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true,
+            required: false, // Optional if groupId is present
+        },
+        groupId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Group",
+            required: false,
         },
         text:{
             type: String,
@@ -29,9 +34,39 @@ const messageSchema = new mongoose.Schema(
         senderDeviceId: {
             type: String,
         },
+        isEdited: {
+            type: Boolean,
+            default: false,
+        },
+        status: {
+            type: String,
+            enum: ["sent", "delivered", "seen"],
+            default: "sent",
+        },
+        expiresAt: {
+            type: Date,
+        },
+        reactions: [
+            {
+                fromId: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: "User",
+                    required: true,
+                },
+                emoji: {
+                    type: String,
+                    required: true,
+                },
+            },
+        ],
     },
     {timestamps: true}
 );
+
+// Create a TTL index on the 'expiresAt' field
+// The document will be automatically deleted when the current time equals 'expiresAt'
+messageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 const Message = mongoose.model("Message", messageSchema);
 
 export default Message;

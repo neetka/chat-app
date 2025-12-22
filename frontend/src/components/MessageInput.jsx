@@ -9,7 +9,12 @@ const MessageInput = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [isFocused, setIsFocused] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const { 
+    sendTypingEvent, 
+    sendStopTypingEvent 
+  } = useChatStore();
   const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const inputRef = useRef(null);
   const { sendMessage } = useChatStore();
@@ -47,6 +52,25 @@ const MessageInput = () => {
     };
     reader.readAsDataURL(file);
   };
+  
+  const { selectedUser } = useChatStore();
+
+  const handleInputChange = (e) => {
+    setText(e.target.value);
+    
+    // Typing indicator logic (P2P only for now)
+    if (!selectedUser) return;
+    
+    sendTypingEvent(selectedUser._id);
+    
+    // Clear existing timeout
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    
+    // Set new timeout to stop typing after 2 seconds of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+        sendStopTypingEvent(selectedUser._id);
+    }, 2000);
+  };
 
   const removeImage = () => {
     setImagePreview(null);
@@ -62,6 +86,12 @@ const MessageInput = () => {
         text: text.trim(),
         image: imagePreview,
       });
+
+      // Clear typing indicator immediately upon sending (P2P only)
+      if (selectedUser) {
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          sendStopTypingEvent(selectedUser._id);
+      }
 
       // Clear form
       setText("");
@@ -130,7 +160,7 @@ const MessageInput = () => {
                        placeholder:text-base-content/40"
             placeholder="Type a message..."
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={handleInputChange}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
           />

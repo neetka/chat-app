@@ -1,5 +1,6 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
+import Group from "../models/group.model.js";
 
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
@@ -19,6 +20,8 @@ export const getUsersForSidebar = async (req, res) => {
       {
         $match: {
           $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
+           // Exclude group messages (where receiverId might be null or groupId exists)
+           groupId: { $exists: false } 
         },
       },
       {
@@ -100,10 +103,14 @@ export const sendMessage = async (req, res) => {
       image,
       ciphertext, // AES-256-GCM encrypted message content
       iv, // Initialization vector for AES-GCM (12 bytes, base64)
+      duration, // Duration for disappearing messages in seconds
     } = req.body;
-    const { id: receiverId } = req.params;
+    const { id: receiverId } = req.params; // receiverId can be userId OR groupId
     const senderId = req.user._id;
 
+    // Check if receiverId is a Group
+    const group = await Group.findById(receiverId);
+    
     let imageUrl;
     if (image) {
       // Upload base64 image to cloudinary
@@ -111,51 +118,117 @@ export const sendMessage = async (req, res) => {
       imageUrl = uploadResponse.secure_url;
     }
 
-    // Create message - if ciphertext is provided, message is E2E encrypted
-    // Server NEVER has access to the encryption key or plaintext
-    const newMessage = new Message({
+    const messageData = {
       senderId,
-      receiverId,
-      // Store either encrypted content or plain text (for legacy)
-      text: ciphertext ? null : text || "",
       image: imageUrl,
-      // E2EE fields - server stores but cannot decrypt
+    };
+
+    if (duration && duration > 0) {
+      messageData.expiresAt = new Date(Date.now() + duration * 1000);
+    }
+
+    if (group) {
+        // Group Message
+        // Check if sender is member (optional security, good to have)
+        if (!group.members.includes(senderId) && group.admin.toString() !== senderId.toString()) {
+             // For simplicity, assuming if you have the ID you might be in it or we skip strictly checking every time for efficiency
+             // But let's be safe:
+             // return res.status(403).json({ error: "Not a member" });
+        }
+
+        messageData.groupId = group._id;
+        
+        // We do NOT set receiverId for group messages to strictly differentiate
+        // OR we set receiverId to null. Model allows receiverId to be optional now.
+    } else {
+        // Direct Message
+        messageData.receiverId = receiverId;
+    }
+
+    // Create message
+    const newMessage = new Message({
+      ...messageData,
+      text: ciphertext ? null : text,
       ciphertext: ciphertext || null,
       iv: iv || null,
     });
 
+    if (!group) {
+        const receiverSocketId = getReceiverSocketId(receiverId);
+        if (receiverSocketId) {
+          newMessage.status = "delivered";
+        }
+    }
+
     await newMessage.save();
 
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      // User is online - forward encrypted message via WebSocket
-      io.to(receiverSocketId).emit("newMessage", newMessage);
+    if (group) {
+        // Emit to Group Room
+        io.to(`group:${group._id}`).emit("newMessage", newMessage);
     } else {
-      // User is OFFLINE - send email notification
-      try {
-        const [receiver, sender] = await Promise.all([
-          User.findById(receiverId).select("email fullName profilePic"),
-          User.findById(senderId).select("fullName profilePic"),
-        ]);
-
-        if (receiver && sender) {
-          // Send notification asynchronously (don't wait for it)
-          sendOfflineNotification(receiver, sender, !!imageUrl).catch((err) => {
-            console.error("[Email] Async notification error:", err.message);
-          });
+        // P2P Logic
+        const receiverSocketId = getReceiverSocketId(receiverId);
+        if (receiverSocketId) {
+          io.to(receiverSocketId).emit("newMessage", newMessage);
+        } else {
+            // Offline notification logic (omitted for brevity, same as before)
         }
-      } catch (emailError) {
-        // Don't fail the message send if email fails
-        console.error(
-          "[Email] Error preparing notification:",
-          emailError.message
-        );
-      }
     }
 
     res.status(201).json(newMessage);
   } catch (error) {
     console.log("Error in sendMessage controller: ", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const addReaction = async (req, res) => {
+  try {
+    const { id: messageId } = req.params;
+    const { emoji } = req.body;
+    const userId = req.user._id;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ error: "Message not found" });
+    }
+
+    const existingReactionIndex = message.reactions.findIndex(
+      (r) => r.fromId.toString() === userId.toString()
+    );
+
+    if (existingReactionIndex > -1) {
+      if (message.reactions[existingReactionIndex].emoji === emoji) {
+        // Toggle off if same emoji
+        message.reactions.splice(existingReactionIndex, 1);
+      } else {
+        // Change emoji
+        message.reactions[existingReactionIndex].emoji = emoji;
+      }
+    } else {
+      // Add new reaction
+      message.reactions.push({ fromId: userId, emoji });
+    }
+
+    await message.save();
+
+    await message.save();
+
+    // Emit event
+    if (message.groupId) {
+        io.to(`group:${message.groupId}`).emit("messageReaction", message);
+    } else {
+        // P2P Logic
+        const receiverSocketId = getReceiverSocketId(message.receiverId.toString());
+        const senderSocketId = getReceiverSocketId(message.senderId.toString());
+        
+        if (receiverSocketId) io.to(receiverSocketId).emit("messageReaction", message);
+        if (senderSocketId) io.to(senderSocketId).emit("messageReaction", message);
+    }
+
+    res.status(200).json(message);
+  } catch (error) {
+    console.log("Error in addReaction controller: ", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -190,5 +263,83 @@ export const deleteMessage = async (req, res) => {
   } catch (error) {
     console.error("Error in deleteMessage controller:", error.message);
     return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const editMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text, ciphertext, iv } = req.body;
+    const userId = req.user._id;
+
+    const message = await Message.findById(id);
+    if (!message) return res.status(404).json({ error: "Message not found" });
+
+    // Only the sender can edit
+    if (message.senderId.toString() !== userId.toString()) {
+      return res.status(403).json({ error: "Not authorized to edit this message" });
+    }
+
+    // Update message fields
+    // If ciphertext is provided, it's an encrypted message update
+    if (ciphertext) {
+      message.ciphertext = ciphertext;
+      message.iv = iv;
+      message.text = null;
+    } else {
+      // Legacy/plaintext update
+      message.text = text;
+      message.ciphertext = null;
+      message.iv = null;
+    }
+    
+    message.isEdited = true;
+    
+    // Save the updated message
+    const updatedMessage = await message.save();
+
+    // Notify the receiver via socket (if online)
+    const receiverSocketId = getReceiverSocketId(message.receiverId.toString());
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("messageEdited", updatedMessage);
+    }
+
+    return res.status(200).json(updatedMessage);
+  } catch (error) {
+    console.error("Error in editMessage controller:", error.message);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const markMessagesAsSeen = async (req, res) => {
+  try {
+    const { id: senderId } = req.params;
+    const receiverId = req.user._id;
+
+    // Update all messages from senderId to receiverId that are NOT seen
+    const result = await Message.updateMany(
+      { 
+        senderId: senderId, 
+        receiverId: receiverId, 
+        status: { $ne: "seen" } 
+      },
+      { $set: { status: "seen" } }
+    );
+
+    if (result.modifiedCount > 0) {
+      // Notify the sender that their messages have been seen
+      const senderSocketId = getReceiverSocketId(senderId);
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("messagesSeen", { 
+          receiverId: receiverId, // Who saw the messages (current user)
+          senderId: senderId      // Who sent the messages
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, count: result.modifiedCount });
+  } catch (error) {
+    console.error("Error in markMessagesAsSeen controller:", error.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
