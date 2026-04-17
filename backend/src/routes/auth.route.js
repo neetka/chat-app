@@ -9,11 +9,14 @@ import {
 } from "../controllers/auth.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js";
 import { checkAuth } from "../controllers/auth.controller.js";
+import { authLimiter } from "../middleware/rateLimiter.js";
+
 const router = express.Router();
 
-router.post("/signup", signup);
+// Auth limiter: 10 attempts per 15 min per IP
+router.post("/signup", authLimiter, signup);
 
-router.post("/login", login);
+router.post("/login", authLimiter, login);
 
 router.post("/logout", logout);
 

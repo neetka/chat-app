@@ -6,6 +6,7 @@ import cors from "cors";
 import path from "path";
 
 import { connectDB } from "./lib/db.js";
+import { apiLimiter } from "./middleware/rateLimiter.js";
 
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
@@ -26,6 +27,9 @@ app.use(
     credentials: true,
   })
 );
+
+// Global rate limiter — 100 requests per 15 min per IP
+app.use("/api", apiLimiter);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
