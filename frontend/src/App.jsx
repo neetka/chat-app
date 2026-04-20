@@ -1,6 +1,7 @@
 import Navbar from "./components/Navbar";
 
 import HomePage from "./pages/HomePage";
+import LandingPage from "./pages/LandingPage";
 import SignUpPage from "./pages/SignUpPage";
 import LoginPage from "./pages/LoginPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -41,7 +42,7 @@ const App = () => {
       <Routes>
         <Route
           path="/"
-          element={authUser ? <HomePage /> : <Navigate to="/login" />}
+          element={authUser ? <HomePage /> : <LandingPage />}
         />
         <Route
           path="/signup"

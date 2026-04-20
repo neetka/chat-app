@@ -23,7 +23,7 @@ const NoChatSelected = () => {
         {/* Welcome Text */}
         <div>
           <h2 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            Welcome to Chatty!
+            Welcome to Yapp!
           </h2>
           <p className="text-base-content/60 mt-3 text-lg">
             Connect with friends and start conversations

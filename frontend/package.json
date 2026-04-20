@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.0",
     "@stablelib/ed25519": "^1.0.3",
     "@stablelib/hkdf": "^1.0.1",
     "@stablelib/random": "^1.0.2",
@@ -18,12 +20,14 @@
     "axios": "^1.13.2",
     "chat-app": "file:..",
     "emoji-picker-react": "^4.16.1",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^0.555.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.9.6",
     "socket.io-client": "^4.8.1",
+    "three": "^0.184.0",
     "zustand": "^5.0.9"
   },
   "devDependencies": {

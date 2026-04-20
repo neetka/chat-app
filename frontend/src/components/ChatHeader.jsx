@@ -63,23 +63,23 @@ const ChatHeader = () => {
 
         {/* Close button */}
         <div className="flex items-center gap-1">
-          {/* Voice & Video Call Buttons (P2P only) */}
-          {!isGroup && selectedUser && (
+          {/* Voice & Video Call Buttons (P2P + Group Mesh) */}
+          {(selectedUser || isGroup) && (
             <>
               <button
-                onClick={() => initiateCall(selectedUser, 'voice', socket)}
+                onClick={() => initiateCall(isGroup ? selectedGroup.members.filter(m => m !== authUser._id && m._id !== authUser._id) : [selectedUser], 'voice', socket)}
                 className="btn btn-sm btn-ghost text-base-content/70 hover:text-success"
                 title="Voice call"
-                disabled={!isOnline || callStatus !== 'idle'}
+                disabled={(!isGroup && !isOnline) || callStatus !== 'idle'}
                 id="voice-call-btn"
               >
                 <Phone className="size-5" />
               </button>
               <button
-                onClick={() => initiateCall(selectedUser, 'video', socket)}
+                onClick={() => initiateCall(isGroup ? selectedGroup.members.filter(m => m !== authUser._id && m._id !== authUser._id) : [selectedUser], 'video', socket)}
                 className="btn btn-sm btn-ghost text-base-content/70 hover:text-info"
                 title="Video call"
-                disabled={!isOnline || callStatus !== 'idle'}
+                disabled={(!isGroup && !isOnline) || callStatus !== 'idle'}
                 id="video-call-btn"
               >
                 <Video className="size-5" />

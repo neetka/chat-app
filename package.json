@@ -22,5 +22,8 @@
   "bugs": {
     "url": "https://github.com/neetka/chat-app/issues"
   },
-  "homepage": "https://github.com/neetka/chat-app#readme"
+  "homepage": "https://github.com/neetka/chat-app#readme",
+  "dependencies": {
+    "debug": "^4.4.3"
+  }
 }
