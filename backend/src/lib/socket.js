@@ -2,22 +2,20 @@ import { Server } from "socket.io";
 import http from "http";
 import express from "express";
 import Message from "../models/message.model.js";
+import User from "../models/user.model.js";
 
 const app = express();
 const server = http.createServer(app);
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
 const io = new Server(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (process.env.NODE_ENV === "production") {
-        const allowedOrigin = process.env.FRONTEND_URL || "http://localhost:5173";
-        callback(null, origin === allowedOrigin);
-      } else {
-        // Allow any localhost origin in development
-        const isLocalhost = origin && /^http:\/\/localhost:\d+$/.test(origin);
-        callback(null, isLocalhost);
-      }
-    },
+    origin: allowedOrigins,
     credentials: true,
   },
 });
@@ -101,79 +99,75 @@ io.on("connection", async (socket) => {
       socket.leave(`group:${groupId}`);
   });
 
-  // ── WebRTC Mesh Signaling Events ─────────────────────────────
-  
-  // Fired when a user initiates a call to multiple participants
-  socket.on("call:ring", ({ toUsers, callType, roomId, callerData }) => {
-    // Notify all targeted users
-    toUsers.forEach((targetId) => {
-      const receiverSocketId = userSocketMap[targetId];
-      if (receiverSocketId && targetId !== userId) { // Don't ring self
-        io.to(receiverSocketId).emit("call:incoming", {
-          fromUser: callerData || { _id: userId },
-          roomId,
-          callType,
-          participants: toUsers, // Useful for UI to know who else is ringing
-        });
-      }
-    });
-  });
-
-  // Fired when a user accepts a call
-  socket.on("call:join", ({ roomId }) => {
-    socket.join(`call:${roomId}`);
-    // Notify others in the room that I just joined, so they can initiate P2P Offers to me
-    socket.to(`call:${roomId}`).emit("call:user-joined", { userId });
-  });
-
-  // Fired when an offer is sent to a specific user
-  socket.on("call:offer", ({ to, offer, roomId }) => {
+  // ── WebRTC Signaling Events ──────────────────────────────────
+  socket.on("call:initiate", async ({ to, offer, callType }) => {
     const receiverSocketId = userSocketMap[to];
     if (receiverSocketId) {
-      io.to(receiverSocketId).emit("call:offer", { from: userId, offer, roomId });
+      // Look up caller info so the receiver can display the caller's name
+      let callerName = "User";
+      let callerPic = "";
+      try {
+        const caller = await User.findById(userId).select("fullName profilePic");
+        if (caller) {
+          callerName = caller.fullName;
+          callerPic = caller.profilePic || "";
+        }
+      } catch (err) {
+        console.error("Error fetching caller info:", err);
+      }
+
+      io.to(receiverSocketId).emit("call:incoming", {
+        from: userId,
+        callerName,
+        callerPic,
+        offer,
+        callType,
+      });
+    } else {
+      // Receiver is offline
+      socket.emit("call:user-offline", { userId: to });
     }
   });
 
-  // Fired when an answer is sent back
-  socket.on("call:answer", ({ to, answer, roomId }) => {
+  socket.on("call:accept", ({ to, answer }) => {
     const callerSocketId = userSocketMap[to];
     if (callerSocketId) {
-      io.to(callerSocketId).emit("call:answer", { from: userId, answer, roomId });
+      io.to(callerSocketId).emit("call:accepted", {
+        from: userId,
+        answer,
+      });
     }
   });
 
-  // Fired for trickle ICE
-  socket.on("call:ice-candidate", ({ to, candidate }) => {
-    const receiverSocketId = userSocketMap[to];
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("call:ice-candidate", { from: userId, candidate });
-    }
-  });
-
-  // Fired when rejecting a ringing call
-  socket.on("call:reject", ({ toUser, roomId }) => {
-    const callerSocketId = userSocketMap[toUser];
+  socket.on("call:reject", ({ to }) => {
+    const callerSocketId = userSocketMap[to];
     if (callerSocketId) {
-      io.to(callerSocketId).emit("call:rejected", { from: userId, roomId });
+      io.to(callerSocketId).emit("call:rejected", { from: userId });
     }
   });
 
-  // Fired when manually leaving or hanging up
-  socket.on("call:leave", ({ roomId }) => {
-    socket.leave(`call:${roomId}`);
-    // Tell others in the call room I have left
-    socket.to(`call:${roomId}`).emit("call:user-left", { userId });
+  socket.on("call:end", ({ to }) => {
+    const otherSocketId = userSocketMap[to];
+    if (otherSocketId) {
+      io.to(otherSocketId).emit("call:ended", { from: userId });
+    }
   });
 
-  // ── End WebRTC Mesh Signaling ────────────────────────────────
+  socket.on("call:ice-candidate", ({ to, candidate }) => {
+    const otherSocketId = userSocketMap[to];
+    if (otherSocketId) {
+      io.to(otherSocketId).emit("call:ice-candidate", {
+        from: userId,
+        candidate,
+      });
+    }
+  });
+  // ── End WebRTC Signaling ─────────────────────────────────────
 
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.id);
     delete userSocketMap[userId];
     io.emit("getOnlineUsers", Object.keys(userSocketMap));
-    
-    // Ideally we should tell their call rooms they dropped if we kept track of their active calls.
-    // For now the client P2P 'disconnected' statechange handles unexpected drops!
   });
 });
 

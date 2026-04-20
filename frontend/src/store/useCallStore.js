@@ -8,114 +8,83 @@ const ICE_SERVERS = {
   ],
 };
 
+const createRemoteStreamHandler = (set) => {
+  const remoteStream = new MediaStream();
+
+  return {
+    remoteStream,
+    handleTrack: (event) => {
+      event.streams[0].getTracks().forEach((track) => {
+        const alreadyExists = remoteStream
+          .getTracks()
+          .some((t) => t.id === track.id);
+
+        if (!alreadyExists) {
+          remoteStream.addTrack(track);
+        }
+      });
+
+      set({ remoteStream });
+    },
+  };
+};
+
 export const useCallStore = create((set, get) => ({
   // ── State ─────────────────────────────────────────────────
-  callStatus: "idle", // idle | calling | ringing | connected
+  callStatus: "idle", // idle | calling | ringing | connecting | connected
   callType: null, // voice | video
-  activeRoomId: null, // Room ID for the mesh network
-  participants: [], // Array of users in the call or being called
-  isCaller: false, // True if we initiated the call
+  remoteUser: null, // { _id, fullName, profilePic }
+  isCaller: false,
 
   localStream: null,
-  peerConnections: {}, // { [userId]: RTCPeerConnection }
-  remoteStreams: {}, // { [userId]: MediaStream }
+  remoteStream: null,
+  peerConnection: null,
 
   isMuted: false,
   isVideoOff: false,
 
   callDuration: 0,
   _durationInterval: null,
-  _pendingCandidates: {}, // { [userId]: [RTCIceCandidate...] }
+  _pendingCandidates: [],
+  _incomingOffer: null,
 
-  // ── Helpers ───────────────────────────────────────────────
+  // ── Internal: start the call timer ────────────────────────
   _startCallTimer: () => {
     const { _durationInterval } = get();
-    if (_durationInterval) clearInterval(_durationInterval);
-    const interval = setInterval(() => {
-      set((state) => ({ callDuration: state.callDuration + 1 }));
-    }, 1000);
-    set({ _durationInterval: interval });
-  },
-
-  _cleanup: (resetStateToIdle = true) => {
-    const { localStream, peerConnections, _durationInterval } = get();
-
-    if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop());
-    }
-
-    Object.values(peerConnections).forEach((pc) => pc.close());
 
     if (_durationInterval) {
       clearInterval(_durationInterval);
     }
 
-    if (resetStateToIdle) {
-      set({
-        callStatus: "idle",
-        callType: null,
-        activeRoomId: null,
-        participants: [],
-        isCaller: false,
-        localStream: null,
-        peerConnections: {},
-        remoteStreams: {},
-        isMuted: false,
-        isVideoOff: false,
-        callDuration: 0,
-        _durationInterval: null,
-        _pendingCandidates: {},
-      });
-    }
+    const interval = setInterval(() => {
+      set((state) => ({ callDuration: state.callDuration + 1 }));
+    }, 1000);
+
+    set({ _durationInterval: interval });
   },
 
-  // Create an RTCPeerConnection for a specific remote user
-  _createPeerConnection: (socket, remoteUserId, roomId) => {
-    const { localStream, peerConnections, remoteStreams, _pendingCandidates } = get();
-
-    if (peerConnections[remoteUserId]) {
-        console.warn(`PeerConnection already exists for ${remoteUserId}`);
-        return peerConnections[remoteUserId];
-    }
-
+  // ── Internal: create a peer connection ────────────────────
+  _createPeerConnection: (socket, otherUserId) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
-    const remoteMediaStream = new MediaStream();
 
-    // Attach local stream tracks
-    if (localStream) {
-      localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
-      });
-    }
+    const { remoteStream, handleTrack } = createRemoteStreamHandler(set);
 
-    // Handle incoming remote tracks
-    pc.ontrack = (event) => {
-      event.streams[0].getTracks().forEach((track) => {
-        if (!remoteMediaStream.getTracks().some((t) => t.id === track.id)) {
-          remoteMediaStream.addTrack(track);
-        }
-      });
-      console.log(`Received track from ${remoteUserId}`);
-      set((state) => ({
-        remoteStreams: { ...state.remoteStreams, [remoteUserId]: remoteMediaStream },
-      }));
-    };
+    pc.ontrack = handleTrack;
 
-    // Send Trickle ICE Candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit("call:ice-candidate", {
-          to: remoteUserId,
+          to: otherUserId,
           candidate: event.candidate,
         });
       }
     };
 
-    // Monitor Connection State
     pc.onconnectionstatechange = () => {
-      console.log(`Connection state with ${remoteUserId}: ${pc.connectionState}`);
-      
-      if (pc.connectionState === "connected") {
+      const state = pc.connectionState;
+      console.log("Peer connection state:", state);
+
+      if (state === "connected") {
         const { callStatus } = get();
         if (callStatus !== "connected") {
           set({ callStatus: "connected" });
@@ -123,303 +92,397 @@ export const useCallStore = create((set, get) => ({
         }
       }
 
-      if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
-        console.log(`Disconnected from ${remoteUserId}`);
-        // Remove their specific PC and Stream
-        const { peerConnections, remoteStreams } = get();
-        const newPCs = { ...peerConnections };
-        const newStreams = { ...remoteStreams };
-        delete newPCs[remoteUserId];
-        delete newStreams[remoteUserId];
-        
-        set({
-            peerConnections: newPCs,
-            remoteStreams: newStreams
-        });
-
-        // If everyone left and I'm not ringing, maybe end call? Let backend events handle total drop.
+      if (
+        state === "disconnected" ||
+        state === "failed" ||
+        state === "closed"
+      ) {
+        get()._cleanup();
       }
     };
 
-    // Store the newly created PC
-    set((state) => ({
-      peerConnections: { ...state.peerConnections, [remoteUserId]: pc },
-      remoteStreams: { ...state.remoteStreams, [remoteUserId]: remoteMediaStream },
-    }));
+    pc.oniceconnectionstatechange = () => {
+      console.log("ICE connection state:", pc.iceConnectionState);
+    };
 
-    return pc;
+    return { pc, remoteStream };
   },
 
-  // ── Actions ───────────────────────────────────────────────
-
-  initiateCall: async (targets, callType, socket) => {
+  // ── Initiate a call (caller side) ─────────────────────────
+  initiateCall: async (user, callType, socket) => {
     if (!socket) {
       toast.error("Not connected to server");
       return;
     }
 
     try {
-      const constraints = { audio: true, video: callType === "video" };
-      const localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const constraints = {
+        audio: true,
+        video: callType === "video",
+      };
 
-      // Generate a unique room ID for this call cluster
-      const roomId = crypto.randomUUID(); 
+      const localStream = await navigator.mediaDevices.getUserMedia(
+        constraints
+      );
+
+      const { pc, remoteStream } = get()._createPeerConnection(
+        socket,
+        user._id
+      );
+
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
 
       set({
         callStatus: "calling",
         callType,
-        activeRoomId: roomId,
-        participants: targets,
+        remoteUser: user,
         isCaller: true,
         localStream,
-        peerConnections: {},
-        remoteStreams: {},
+        remoteStream,
+        peerConnection: pc,
         isMuted: false,
         isVideoOff: false,
         callDuration: 0,
+        _pendingCandidates: [],
+        _incomingOffer: null,
       });
 
-      // Ping all targets
-      socket.emit("call:ring", {
-        toUsers: targets.map((t) => t._id || t),
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      socket.emit("call:initiate", {
+        to: user._id,
+        offer,
         callType,
-        roomId,
-        // The UI might need to know who is calling
       });
-
     } catch (error) {
       console.error("Error initiating call:", error);
-      if (error.name === "NotAllowedError") toast.error("Camera/microphone permission denied");
-      else toast.error("Failed to start call");
+
+      if (error.name === "NotAllowedError") {
+        toast.error("Camera/microphone permission denied");
+      } else if (error.name === "NotFoundError") {
+        toast.error("Camera/microphone not found");
+      } else {
+        toast.error("Failed to start call");
+      }
+
       get()._cleanup();
     }
   },
 
+  // ── Accept incoming call (receiver side) ──────────────────
   acceptCall: async (socket) => {
-    const { activeRoomId, callType } = get();
-    if (!socket || !activeRoomId) return;
+    const { _incomingOffer, remoteUser, callType } = get();
+
+    if (!socket || !_incomingOffer || !remoteUser?._id) return;
+
+    // Immediately show "Connecting..." while we set up WebRTC
+    set({ callStatus: "connecting" });
 
     try {
-      const constraints = { audio: true, video: callType === "video" };
-      const localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const constraints = {
+        audio: true,
+        video: callType === "video",
+      };
+
+      const localStream = await navigator.mediaDevices.getUserMedia(
+        constraints
+      );
+
+      const { pc, remoteStream } = get()._createPeerConnection(
+        socket,
+        remoteUser._id
+      );
+
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
 
       set({
-        callStatus: "calling", // transition visual before pure connected
         localStream,
-        peerConnections: {},
-        remoteStreams: {},
+        remoteStream,
+        peerConnection: pc,
         isMuted: false,
         isVideoOff: false,
         callDuration: 0,
       });
 
-      // Join the mesh room
-      socket.emit("call:join", { roomId: activeRoomId });
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(_incomingOffer)
+      );
 
+      const { _pendingCandidates } = get();
+      for (const candidate of _pendingCandidates) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.warn("Failed to add buffered ICE candidate:", e);
+        }
+      }
+
+      set({ _pendingCandidates: [] });
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socket.emit("call:accept", {
+        to: remoteUser._id,
+        answer,
+      });
+
+      // Don't set "connected" here.
+      // pc.onconnectionstatechange will transition to "connected"
+      // once the peer connection is actually established.
+      set({ _incomingOffer: null });
     } catch (error) {
       console.error("Error accepting call:", error);
-      toast.error("Failed to accept call");
+
+      if (error.name === "NotAllowedError") {
+        toast.error("Camera/microphone permission denied");
+      } else {
+        toast.error("Failed to accept call");
+      }
+
       get().rejectCall(socket);
     }
   },
 
+  // ── Reject incoming call ──────────────────────────────────
   rejectCall: (socket) => {
-    const { activeRoomId, participants } = get();
-    if (socket && activeRoomId) {
-       // We reject everyone we were ringing
-       participants.forEach(p => {
-           socket.emit("call:reject", { toUser: p._id || p, roomId: activeRoomId });
-       });
+    const { remoteUser } = get();
+
+    if (socket && remoteUser?._id) {
+      socket.emit("call:reject", { to: remoteUser._id });
     }
+
     get()._cleanup();
   },
 
+  // ── End ongoing call ──────────────────────────────────────
   endCall: (socket) => {
-    const { activeRoomId } = get();
-    if (socket && activeRoomId) {
-      socket.emit("call:leave", { roomId: activeRoomId });
+    const { remoteUser } = get();
+
+    if (socket && remoteUser?._id) {
+      socket.emit("call:end", { to: remoteUser._id });
     }
+
     get()._cleanup();
   },
 
+  // ── Toggle mute ───────────────────────────────────────────
   toggleMute: () => {
     const { localStream, isMuted } = get();
+
     if (!localStream) return;
+
     localStream.getAudioTracks().forEach((track) => {
       track.enabled = isMuted;
     });
+
     set({ isMuted: !isMuted });
   },
 
+  // ── Toggle video ──────────────────────────────────────────
   toggleVideo: () => {
     const { localStream, isVideoOff } = get();
+
     if (!localStream) return;
+
     localStream.getVideoTracks().forEach((track) => {
       track.enabled = isVideoOff;
     });
+
     set({ isVideoOff: !isVideoOff });
   },
 
-  // ── Socket Events ───────────────────────────────────────────
+  // ── Socket event listeners ────────────────────────────────
   setupCallListeners: (socket, getUsers) => {
     if (!socket) return;
-    
-    // Clear old listeners
-    socket.off("call:incoming");
-    socket.off("call:user-joined");
-    socket.off("call:offer");
-    socket.off("call:answer");
-    socket.off("call:ice-candidate");
-    socket.off("call:rejected");
-    socket.off("call:user-left");
 
-    // A peer is calling us
-    socket.on("call:incoming", ({ fromUser, roomId, callType, participants }) => {
-      const { callStatus } = get();
-      if (callStatus !== "idle") {
-        // Auto reject if already busy
-        socket.emit("call:reject", { toUser: fromUser._id, roomId });
+    // Clean up any existing listeners first
+    socket.off("call:incoming");
+    socket.off("call:accepted");
+    socket.off("call:rejected");
+    socket.off("call:ended");
+    socket.off("call:ice-candidate");
+    socket.off("call:user-offline");
+
+    // Incoming call (receiver side)
+    socket.on(
+      "call:incoming",
+      ({ from, callerName, callerPic, offer, callType }) => {
+        const { callStatus } = get();
+
+        // If already in a call, auto-reject
+        if (callStatus !== "idle") {
+          socket.emit("call:reject", { to: from });
+          return;
+        }
+
+        // Build caller info from data sent by the backend
+        let callerData = {
+          _id: from,
+          fullName: callerName || "User",
+          profilePic: callerPic || "",
+        };
+
+        // Optionally enrich from local user list (e.g. if backend didn't send info)
+        if ((!callerName || callerName === "User") && getUsers) {
+          const users = getUsers();
+          const foundUser = users.find((u) => u._id === from);
+          if (foundUser) {
+            callerData = foundUser;
+          }
+        }
+
+        set({
+          callStatus: "ringing",
+          callType,
+          remoteUser: callerData,
+          isCaller: false,
+          _incomingOffer: offer,
+          _pendingCandidates: [],
+          callDuration: 0,
+        });
+      }
+    );
+
+    // Call accepted (caller side receives this)
+    socket.on("call:accepted", async ({ answer }) => {
+      const { peerConnection, _pendingCandidates } = get();
+
+      if (!peerConnection) return;
+
+      try {
+        await peerConnection.setRemoteDescription(
+          new RTCSessionDescription(answer)
+        );
+
+        for (const candidate of _pendingCandidates) {
+          try {
+            await peerConnection.addIceCandidate(
+              new RTCIceCandidate(candidate)
+            );
+          } catch (e) {
+            console.warn("Failed to add buffered ICE candidate:", e);
+          }
+        }
+
+        set({ _pendingCandidates: [] });
+
+        // Don't manually force "connected" here.
+        // onconnectionstatechange will handle it.
+      } catch (error) {
+        console.error("Error handling accepted call:", error);
+        get()._cleanup();
+      }
+    });
+
+    // Call rejected
+    socket.on("call:rejected", () => {
+      toast("Call was declined", { icon: "📵" });
+      get()._cleanup();
+    });
+
+    // Call ended by the other party
+    socket.on("call:ended", () => {
+      toast("Call ended", { icon: "📞" });
+      get()._cleanup();
+    });
+
+    // ICE candidates from the other party
+    socket.on("call:ice-candidate", async ({ candidate }) => {
+      const { peerConnection } = get();
+
+      if (!peerConnection) {
+        set((state) => ({
+          _pendingCandidates: [...state._pendingCandidates, candidate],
+        }));
         return;
       }
-      
-      // Attempt to resolve participant identities
-      let fullParticipants = participants.map(id => ({ _id: id }));
-      if (getUsers) {
-          const allUsers = getUsers();
-          fullParticipants = participants.map(id => allUsers.find(u => u._id === id) || { _id: id });
-          // Ensure caller is at the front for display purposes
-          if(!fullParticipants.some(p => p._id === fromUser._id)) fullParticipants.push(fromUser);
+
+      const remoteDescriptionSet =
+        peerConnection.remoteDescription &&
+        peerConnection.remoteDescription.type;
+
+      if (!remoteDescriptionSet) {
+        set((state) => ({
+          _pendingCandidates: [...state._pendingCandidates, candidate],
+        }));
+        return;
       }
 
-      set({
-        callStatus: "ringing",
-        callType,
-        activeRoomId: roomId,
-        participants: fullParticipants,
-        isCaller: false,
-        callDuration: 0,
-      });
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.warn("Error adding ICE candidate:", error);
+      }
     });
 
-    // Someone joined the room we are in! (If I am in the room, I act as the initiator for this specific link)
-    socket.on("call:user-joined", async ({ userId }) => {
-        const { activeRoomId } = get();
-        console.log(`User ${userId} joined room ${activeRoomId}. Creating Offer...`);
-        try {
-            const pc = get()._createPeerConnection(socket, userId, activeRoomId);
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit("call:offer", { to: userId, offer, roomId: activeRoomId });
-        } catch (e) {
-            console.error("Error creating offer for new user:", e);
-        }
-    });
-
-    // Someone sent us an offer
-    socket.on("call:offer", async ({ from, offer, roomId }) => {
-        console.log(`Received Offer from ${from}`);
-        try {
-            const pc = get()._createPeerConnection(socket, from, roomId);
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            
-            // Apply any candidates buffered before description was set
-            const pending = get()._pendingCandidates[from] || [];
-            for (const candidate of pending) {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            }
-            set(state => {
-                const newPending = { ...state._pendingCandidates };
-                newPending[from] = [];
-                return { _pendingCandidates: newPending };
-            });
-
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit("call:answer", { to: from, answer, roomId });
-        } catch (e) {
-            console.error("Error handling incoming offer:", e);
-        }
-    });
-
-    // Someone sent us an answer to our offer
-    socket.on("call:answer", async ({ from, answer }) => {
-        console.log(`Received Answer from ${from}`);
-        try {
-            const pc = get().peerConnections[from];
-            if (pc) {
-                await pc.setRemoteDescription(new RTCSessionDescription(answer));
-                const pending = get()._pendingCandidates[from] || [];
-                for (const candidate of pending) {
-                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                }
-                set(state => {
-                    const newPending = { ...state._pendingCandidates };
-                    newPending[from] = [];
-                    return { _pendingCandidates: newPending };
-                });
-            }
-        } catch (e) {
-            console.error("Error setting remote description from answer:", e);
-        }
-    });
-
-    socket.on("call:ice-candidate", async ({ from, candidate }) => {
-       const pc = get().peerConnections[from];
-       if (!pc || !pc.remoteDescription) {
-           set(state => ({
-               _pendingCandidates: {
-                   ...state._pendingCandidates,
-                   [from]: [...(state._pendingCandidates[from] || []), candidate]
-               }
-           }));
-           return;
-       }
-       try {
-           await pc.addIceCandidate(new RTCIceCandidate(candidate));
-       } catch (e) {
-           console.warn("Failed to add ICE candidate:", e);
-       }
-    });
-
-    // A recipient rejected the ping
-    socket.on("call:rejected", ({ from }) => {
-        toast(`User declined call`, { icon: "📵" });
-        // Optionally end completely if it was a 1-on-1
-        const { participants } = get();
-        if (participants.length <= 1) {
-            get()._cleanup();
-        }
-    });
-
-    // A user left the mesh
-    socket.on("call:user-left", ({ userId }) => {
-        toast(`User left call`, { icon: "👋" });
-        const { peerConnections, remoteStreams } = get();
-        pc = peerConnections[userId];
-        if (pc) pc.close();
-        
-        const newPCs = { ...peerConnections };
-        const newStreams = { ...remoteStreams };
-        delete newPCs[userId];
-        delete newStreams[userId];
-        
-        set({ peerConnections: newPCs, remoteStreams: newStreams });
-        
-        // If object is empty, maybe end call?
-        if (Object.keys(newPCs).length === 0) {
-            get()._cleanup();
-        }
+    // User is offline
+    socket.on("call:user-offline", () => {
+      toast.error("User is offline");
+      get()._cleanup();
     });
   },
 
+  // ── Remove socket listeners ───────────────────────────────
   cleanupCallListeners: (socket) => {
     if (!socket) return;
+
     socket.off("call:incoming");
-    socket.off("call:user-joined");
-    socket.off("call:offer");
-    socket.off("call:answer");
-    socket.off("call:ice-candidate");
+    socket.off("call:accepted");
     socket.off("call:rejected");
-    socket.off("call:user-left");
+    socket.off("call:ended");
+    socket.off("call:ice-candidate");
+    socket.off("call:user-offline");
+  },
+
+  // ── Internal cleanup ──────────────────────────────────────
+  _cleanup: () => {
+    const {
+      localStream,
+      remoteStream,
+      peerConnection,
+      _durationInterval,
+    } = get();
+
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+    }
+
+    if (remoteStream) {
+      remoteStream.getTracks().forEach((track) => track.stop());
+    }
+
+    if (peerConnection) {
+      peerConnection.ontrack = null;
+      peerConnection.onicecandidate = null;
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.oniceconnectionstatechange = null;
+      peerConnection.close();
+    }
+
+    if (_durationInterval) {
+      clearInterval(_durationInterval);
+    }
+
+    set({
+      callStatus: "idle",
+      callType: null,
+      remoteUser: null,
+      isCaller: false,
+      localStream: null,
+      remoteStream: null,
+      peerConnection: null,
+      isMuted: false,
+      isVideoOff: false,
+      callDuration: 0,
+      _durationInterval: null,
+      _pendingCandidates: [],
+      _incomingOffer: null,
+    });
   },
 }));
