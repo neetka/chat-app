@@ -1,13 +1,15 @@
-import { X, Lock, Timer, UserPlus } from "lucide-react";
+import { X, Lock, Timer, UserPlus, Phone, Video } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
+import { useCallStore } from "../store/useCallStore";
 
 import AddMemberModal from "./AddMemberModal";
 import { useState } from "react";
 
 const ChatHeader = () => {
   const { selectedUser, selectedGroup, setSelectedUser, setSelectedGroup, encryptionEnabled, toggleEncryption, disappearingDuration, setDisappearingDuration, isTyping } = useChatStore();
-  const { onlineUsers, authUser } = useAuthStore();
+  const { onlineUsers, authUser, socket } = useAuthStore();
+  const { initiateCall, callStatus } = useCallStore();
   const [showAddMember, setShowAddMember] = useState(false);
 
   const isGroup = !!selectedGroup;
@@ -60,7 +62,30 @@ const ChatHeader = () => {
         </div>
 
         {/* Close button */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          {/* Voice & Video Call Buttons (P2P only) */}
+          {!isGroup && selectedUser && (
+            <>
+              <button
+                onClick={() => initiateCall(selectedUser, 'voice', socket)}
+                className="btn btn-sm btn-ghost text-base-content/70 hover:text-success"
+                title="Voice call"
+                disabled={!isOnline || callStatus !== 'idle'}
+                id="voice-call-btn"
+              >
+                <Phone className="size-5" />
+              </button>
+              <button
+                onClick={() => initiateCall(selectedUser, 'video', socket)}
+                className="btn btn-sm btn-ghost text-base-content/70 hover:text-info"
+                title="Video call"
+                disabled={!isOnline || callStatus !== 'idle'}
+                id="video-call-btn"
+              >
+                <Video className="size-5" />
+              </button>
+            </>
+          )}
           {/* Add Member Button (Groups & Admin only) */}
           {isGroup && (
              // Handle both populated object and direct ID ID

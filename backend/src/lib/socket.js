@@ -101,6 +101,56 @@ io.on("connection", async (socket) => {
       socket.leave(`group:${groupId}`);
   });
 
+  // ── WebRTC Signaling Events ──────────────────────────────────
+  socket.on("call:initiate", ({ to, offer, callType }) => {
+    const receiverSocketId = userSocketMap[to];
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("call:incoming", {
+        from: userId,
+        offer,
+        callType,
+      });
+    } else {
+      // Receiver is offline
+      socket.emit("call:user-offline", { userId: to });
+    }
+  });
+
+  socket.on("call:accept", ({ to, answer }) => {
+    const callerSocketId = userSocketMap[to];
+    if (callerSocketId) {
+      io.to(callerSocketId).emit("call:accepted", {
+        from: userId,
+        answer,
+      });
+    }
+  });
+
+  socket.on("call:reject", ({ to }) => {
+    const callerSocketId = userSocketMap[to];
+    if (callerSocketId) {
+      io.to(callerSocketId).emit("call:rejected", { from: userId });
+    }
+  });
+
+  socket.on("call:end", ({ to }) => {
+    const otherSocketId = userSocketMap[to];
+    if (otherSocketId) {
+      io.to(otherSocketId).emit("call:ended", { from: userId });
+    }
+  });
+
+  socket.on("call:ice-candidate", ({ to, candidate }) => {
+    const otherSocketId = userSocketMap[to];
+    if (otherSocketId) {
+      io.to(otherSocketId).emit("call:ice-candidate", {
+        from: userId,
+        candidate,
+      });
+    }
+  });
+  // ── End WebRTC Signaling ─────────────────────────────────────
+
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.id);
     delete userSocketMap[userId];

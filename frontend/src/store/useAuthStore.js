@@ -132,6 +132,21 @@ export const useAuthStore = create((set, get) => ({
       set({ onlineUsers: userIds });
     });
 
+    // Setup WebRTC call signaling listeners
+    import("./useCallStore").then(({ useCallStore }) => {
+      const callStore = useCallStore.getState();
+      // Pass a getter for users list so incoming calls can resolve caller info
+      const getUsers = () => {
+        return import("./useChatStore").then(({ useChatStore }) => {
+          return useChatStore.getState().users;
+        });
+      };
+      // We need sync access, so use the chat store directly
+      import("./useChatStore").then(({ useChatStore }) => {
+        callStore.setupCallListeners(socket, () => useChatStore.getState().users);
+      });
+    });
+
     // Listen for new messages to update sidebar order (for unselected chats)
     socket.on("newMessage", (newMessage) => {
       // Dynamically import to avoid circular dependency
@@ -148,6 +163,13 @@ export const useAuthStore = create((set, get) => ({
     });
   },
   disconnectSocket: () => {
-    if (get().socket?.connected) get().socket.disconnect();
+    const socket = get().socket;
+    if (socket?.connected) {
+      // Cleanup call listeners before disconnecting
+      import("./useCallStore").then(({ useCallStore }) => {
+        useCallStore.getState().cleanupCallListeners(socket);
+      });
+      socket.disconnect();
+    }
   },
 }));
