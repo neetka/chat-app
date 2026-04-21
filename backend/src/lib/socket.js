@@ -33,36 +33,25 @@ io.on("connection", async (socket) => {
   console.log("A user connected", socket.id);
 
   const userId = socket.handshake.query.userId;
-  if (userId) {
+  if (userId && userId !== "undefined" && userId !== "null") {
     userSocketMap[userId] = socket.id;
-
+    
     // Update messages sent TO this user that are 'sent' -> 'delivered'
     try {
-      const result = await Message.updateMany(
+      await Message.updateMany(
         { receiverId: userId, status: "sent" },
         { $set: { status: "delivered" } }
       );
-
-      if (result.modifiedCount > 0) {
-        // Find distinct senders of these messages to notify them
-        // This is a bit complex to do perfectly efficiently, but we can just broadcast 
-        // that THIS user received messages, or verify per-sender.
-        // For simplicity and performance in this demo, we can fetch the distinct senders 
-        // of the just-updated messages if we want precisely targeted events, or 
-        // we can just let the client handle it if we emit a general "userOnline" 
-        // but explicit events are better.
-        
-        // Let's notify specific senders that their messages to this user are delivered
-        const updatedMessages = await Message.find({ receiverId: userId, status: "delivered" }).select("senderId");
-        const senders = [...new Set(updatedMessages.map(m => m.senderId.toString()))];
-        
-        senders.forEach(senderId => {
-           const senderSocketId = userSocketMap[senderId];
-           if (senderSocketId) {
-             io.to(senderSocketId).emit("messagesDelivered", { receiverId: userId });
-           }
-        });
-      }
+      
+      const updatedMessages = await Message.find({ receiverId: userId, status: "delivered" }).select("senderId");
+      const senders = [...new Set(updatedMessages.map(m => m.senderId.toString()))];
+      
+      senders.forEach(senderId => {
+         const senderSocketId = userSocketMap[senderId];
+         if (senderSocketId) {
+           io.to(senderSocketId).emit("messagesDelivered", { receiverId: userId });
+         }
+      });
     } catch (error) {
        console.error("Error updating delivery status:", error);
     }
@@ -94,7 +83,6 @@ io.on("connection", async (socket) => {
 
   socket.on("joinGroup", (groupId) => {
       socket.join(`group:${groupId}`);
-      console.log(`User ${socket.id} joined group:${groupId}`);
   });
 
   socket.on("leaveGroup", (groupId) => {
@@ -105,7 +93,6 @@ io.on("connection", async (socket) => {
   socket.on("call:initiate", async ({ to, offer, callType }) => {
     const receiverSocketId = userSocketMap[to];
     if (receiverSocketId) {
-      // Look up caller info so the receiver can display the caller's name
       let callerName = "User";
       let callerPic = "";
       try {
@@ -126,7 +113,6 @@ io.on("connection", async (socket) => {
         callType,
       });
     } else {
-      // Receiver is offline
       socket.emit("call:user-offline", { userId: to });
     }
   });
@@ -165,10 +151,12 @@ io.on("connection", async (socket) => {
     }
   });
   // ── End WebRTC Signaling ─────────────────────────────────────
-
+  
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.id);
-    delete userSocketMap[userId];
+    if (userId && userSocketMap[userId] === socket.id) {
+       delete userSocketMap[userId];
+    }
     io.emit("getOnlineUsers", Object.keys(userSocketMap));
   });
 });
