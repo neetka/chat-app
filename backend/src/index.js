@@ -21,15 +21,9 @@ const __dirname = path.resolve();
 
 app.use(express.json({ limit: "10mb" })); // increases the payload size limit
 app.use(cookieParser());
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  process.env.FRONTEND_URL, // e.g. https://yapp-27.vercel.app
-].filter(Boolean);
-
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: "*",
     credentials: true,
   })
 );
