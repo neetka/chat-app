@@ -57,20 +57,25 @@ const CallOverlay = () => {
   useEffect(() => {
     const video = remoteVideoRef.current;
     if (video && remoteStream) {
+      console.log("Attaching remote stream to video element...");
       video.srcObject = remoteStream;
       
-      const handleMetadataLoaded = () => {
+      const handlePlay = () => {
         video.play().catch((err) => {
-          console.warn("Remote video play failed, might need user gesture:", err);
+          console.warn("Retrying playback due to auto-play policy:", err);
+          // Retry playback on next frame
+          requestAnimationFrame(() => video.play().catch(() => {}));
         });
       };
 
-      video.addEventListener("loadedmetadata", handleMetadataLoaded);
-      // Also try playing immediately in case metadata is already there
-      video.play().catch(() => {});
+      video.addEventListener("loadedmetadata", handlePlay);
+      video.addEventListener("canplay", handlePlay);
+      
+      handlePlay(); // Try immediately
 
       return () => {
-        video.removeEventListener("loadedmetadata", handleMetadataLoaded);
+        video.removeEventListener("loadedmetadata", handlePlay);
+        video.removeEventListener("canplay", handlePlay);
       };
     }
   }, [remoteStream, isConnected]);
