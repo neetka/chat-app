@@ -5,6 +5,11 @@ const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      password: "openrelayproject",
+    },
   ],
 };
 
@@ -14,6 +19,7 @@ const createRemoteStreamHandler = (set) => {
   return {
     remoteStream,
     handleTrack: (event) => {
+      console.log("Received remote track:", event.track.kind);
       event.streams[0].getTracks().forEach((track) => {
         const alreadyExists = remoteStream
           .getTracks()
@@ -24,7 +30,8 @@ const createRemoteStreamHandler = (set) => {
         }
       });
 
-      set({ remoteStream });
+      // Force a re-render by creating a new MediaStream reference
+      set({ remoteStream: new MediaStream(remoteStream.getTracks()) });
     },
   };
 };
