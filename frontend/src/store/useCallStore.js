@@ -8,7 +8,7 @@ const ICE_SERVERS = {
     {
       urls: "turn:openrelay.metered.ca:443",
       username: "openrelayproject",
-      password: "openrelayproject",
+      credential: "openrelayproject",
     },
   ],
 };
