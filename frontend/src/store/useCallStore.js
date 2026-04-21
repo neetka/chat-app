@@ -81,10 +81,30 @@ export const useCallStore = create((set, get) => ({
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log("Sending ICE candidate to:", otherUserId);
         socket.emit("call:ice-candidate", {
           to: otherUserId,
           candidate: event.candidate,
         });
+      }
+    };
+
+    // Negotiation needed handler
+    pc.onnegotiationneeded = async () => {
+      try {
+        const { isCaller } = get();
+        if (isCaller) {
+          console.log("Negotiation needed, creating offer...");
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit("call:initiate", {
+            to: otherUserId,
+            offer,
+            callType: get().callType,
+          });
+        }
+      } catch (err) {
+        console.error("Error during negotiation:", err);
       }
     };
 
@@ -139,6 +159,7 @@ export const useCallStore = create((set, get) => ({
       );
 
       localStream.getTracks().forEach((track) => {
+        track.enabled = true; // Explicitly enable
         pc.addTrack(track, localStream);
       });
 
@@ -205,6 +226,7 @@ export const useCallStore = create((set, get) => ({
       );
 
       localStream.getTracks().forEach((track) => {
+        track.enabled = true; // Explicitly enable
         pc.addTrack(track, localStream);
       });
 
