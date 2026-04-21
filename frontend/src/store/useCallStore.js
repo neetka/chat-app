@@ -89,25 +89,6 @@ export const useCallStore = create((set, get) => ({
       }
     };
 
-    // Negotiation needed handler
-    pc.onnegotiationneeded = async () => {
-      try {
-        const { isCaller } = get();
-        if (isCaller) {
-          console.log("Negotiation needed, creating offer...");
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit("call:initiate", {
-            to: otherUserId,
-            offer,
-            callType: get().callType,
-          });
-        }
-      } catch (err) {
-        console.error("Error during negotiation:", err);
-      }
-    };
-
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       console.log("Peer connection state:", state);
