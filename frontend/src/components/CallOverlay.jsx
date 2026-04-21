@@ -43,13 +43,15 @@ const CallOverlay = () => {
   const remoteVideoRef = useRef(null);
   const ringtoneRef = useRef(null);
 
+  const isConnected = callStatus === "connected";
+
   // Attach local video stream
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
       localVideoRef.current.play().catch(() => {});
     }
-  }, [localStream]);
+  }, [localStream, isConnected]);
 
   // Attach remote video stream
   useEffect(() => {
@@ -71,7 +73,7 @@ const CallOverlay = () => {
         video.removeEventListener("loadedmetadata", handleMetadataLoaded);
       };
     }
-  }, [remoteStream]);
+  }, [remoteStream, isConnected]);
 
   // Play ringtone when ringing or calling
   useEffect(() => {
