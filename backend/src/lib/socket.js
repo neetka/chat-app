@@ -10,6 +10,8 @@ const server = http.createServer(app);
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
+  "https://yapp-27.vercel.app",
+  "https://yapp-ixs5.onrender.com",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
