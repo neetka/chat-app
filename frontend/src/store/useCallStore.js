@@ -20,17 +20,18 @@ const createRemoteStreamHandler = (set) => {
     remoteStream,
     handleTrack: (event) => {
       console.log("Received remote track:", event.track.kind);
-      event.streams[0].getTracks().forEach((track) => {
-        const alreadyExists = remoteStream
-          .getTracks()
-          .some((t) => t.id === track.id);
+      
+      // Add the individual track to our remoteStream
+      const alreadyExists = remoteStream
+        .getTracks()
+        .some((t) => t.id === event.track.id);
 
-        if (!alreadyExists) {
-          remoteStream.addTrack(track);
-        }
-      });
+      if (!alreadyExists) {
+        remoteStream.addTrack(event.track);
+      }
 
       // Force a re-render by creating a new MediaStream reference
+      // This is the most reliable way to tell React/Browser that new tracks arrived.
       set({ remoteStream: new MediaStream(remoteStream.getTracks()) });
     },
   };

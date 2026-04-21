@@ -53,9 +53,23 @@ const CallOverlay = () => {
 
   // Attach remote video stream
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play().catch(() => {});
+    const video = remoteVideoRef.current;
+    if (video && remoteStream) {
+      video.srcObject = remoteStream;
+      
+      const handleMetadataLoaded = () => {
+        video.play().catch((err) => {
+          console.warn("Remote video play failed, might need user gesture:", err);
+        });
+      };
+
+      video.addEventListener("loadedmetadata", handleMetadataLoaded);
+      // Also try playing immediately in case metadata is already there
+      video.play().catch(() => {});
+
+      return () => {
+        video.removeEventListener("loadedmetadata", handleMetadataLoaded);
+      };
     }
   }, [remoteStream]);
 
@@ -63,6 +77,16 @@ const CallOverlay = () => {
   useEffect(() => {
     if (callStatus === "ringing" || callStatus === "calling") {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Resume context if it was suspended (autoplay policy)
+      if (audioCtx.state === "suspended") {
+        const resume = () => {
+          audioCtx.resume();
+          window.removeEventListener("click", resume);
+        };
+        window.addEventListener("click", resume);
+      }
+
       let oscillator = null;
       let interval = null;
 
@@ -127,13 +151,14 @@ const CallOverlay = () => {
       {/* Background */}
       <div className="call-overlay__bg" />
 
-      {/* Remote Video (full screen for video calls) */}
-      {isVideoCall && isConnected && (
+      {/* Remote Media (Video or Audio) */}
+      {isConnected && (
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          className="call-overlay__remote-video"
+          className={isVideoCall ? "call-overlay__remote-video" : "hidden"}
+          style={!isVideoCall ? { display: "none" } : {}}
         />
       )}
 
