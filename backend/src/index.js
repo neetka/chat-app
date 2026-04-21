@@ -23,7 +23,7 @@ app.use(express.json({ limit: "10mb" })); // increases the payload size limit
 app.use(cookieParser());
 app.use(
   cors({
-    origin: "*",
+    origin: ["http://localhost:5173", "http://localhost:5174", "https://yapp-27.vercel.app"],
     credentials: true,
   })
 );
