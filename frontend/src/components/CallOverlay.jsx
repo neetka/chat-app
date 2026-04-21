@@ -133,7 +133,6 @@ const CallOverlay = () => {
   if (callStatus === "idle") return null;
 
   const isVideoCall = callType === "video";
-  const isConnected = callStatus === "connected";
   const isRinging = callStatus === "ringing";
   const isCalling = callStatus === "calling";
   const isConnecting = callStatus === "connecting";
