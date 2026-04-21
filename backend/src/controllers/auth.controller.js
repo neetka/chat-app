@@ -69,7 +69,12 @@ export const login = async (req, res) => {
 
 export const logout = (req, res) => {
   try {
-    res.cookie("jwt", "", { maxAge: 0 });
+    res.cookie("jwt", "", { 
+      maxAge: 0,
+      sameSite: "none",
+      secure: true,
+      httpOnly: true,
+    });
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
     console.log("Error in logout controller:", error);
@@ -150,7 +155,12 @@ export const deleteAccount = async (req, res) => {
 
     await User.findByIdAndDelete(userId);
 
-    res.cookie("jwt", "", { maxAge: 0 });
+    res.cookie("jwt", "", { 
+      maxAge: 0,
+      sameSite: "none",
+      secure: true,
+      httpOnly: true,
+    });
     res.status(200).json({ message: "Account deleted successfully" });
   } catch (error) {
     console.log("Error in delete account:", error);
