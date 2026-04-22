@@ -40,4 +40,19 @@ router.get("/ice-servers", protectRoute, (req, res) => {
   res.json({ iceServers });
 });
 
+// GET /api/call/health — public diagnostic (no auth required)
+// Reports whether TURN is configured without exposing credentials
+router.get("/health", (req, res) => {
+  const turnUrl = process.env.TURN_SERVER_URL;
+  const turnUsername = process.env.TURN_SERVER_USERNAME;
+  const turnCredential = process.env.TURN_SERVER_CREDENTIAL;
+
+  res.json({
+    turnConfigured: !!(turnUrl && turnUsername && turnCredential),
+    turnUrlCount: turnUrl ? turnUrl.split(",").length : 0,
+    hasUsername: !!turnUsername,
+    hasCredential: !!turnCredential,
+  });
+});
+
 export default router;
