@@ -1,24 +1,25 @@
 import { create } from "zustand";
 import toast from "react-hot-toast";
+import { axiosInstance } from "../lib/axios";
 
-const ICE_SERVERS = {
+// Fallback STUN-only config (works on local network, not across NATs)
+const FALLBACK_ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
   ],
+};
+
+// Fetch TURN/ICE credentials from the backend so they aren't
+// hardcoded in the frontend bundle
+const fetchIceServers = async () => {
+  try {
+    const res = await axiosInstance.get("/call/ice-servers");
+    return { iceServers: res.data.iceServers };
+  } catch (err) {
+    console.warn("Failed to fetch ICE servers, using STUN-only fallback:", err);
+    return FALLBACK_ICE_SERVERS;
+  }
 };
 
 const CONNECTION_TIMEOUT_MS = 20000; // 20 seconds to establish connection
@@ -83,8 +84,9 @@ export const useCallStore = create((set, get) => ({
   },
 
   // ── Internal: create a peer connection ────────────────────
-  _createPeerConnection: (socket, otherUserId) => {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+  _createPeerConnection: async (socket, otherUserId) => {
+    const iceConfig = await fetchIceServers();
+    const pc = new RTCPeerConnection(iceConfig);
 
     const { remoteStream, handleTrack } = createRemoteStreamHandler(set);
 
@@ -150,7 +152,7 @@ export const useCallStore = create((set, get) => ({
         constraints
       );
 
-      const { pc, remoteStream } = get()._createPeerConnection(
+      const { pc, remoteStream } = await get()._createPeerConnection(
         socket,
         user._id
       );
@@ -217,7 +219,7 @@ export const useCallStore = create((set, get) => ({
         constraints
       );
 
-      const { pc, remoteStream } = get()._createPeerConnection(
+      const { pc, remoteStream } = await get()._createPeerConnection(
         socket,
         remoteUser._id
       );
