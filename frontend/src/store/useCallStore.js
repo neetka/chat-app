@@ -86,7 +86,14 @@ export const useCallStore = create((set, get) => ({
   // ── Internal: create a peer connection ────────────────────
   _createPeerConnection: async (socket, otherUserId) => {
     const iceConfig = await fetchIceServers();
-    const pc = new RTCPeerConnection(iceConfig);
+
+    let pc;
+    try {
+      pc = new RTCPeerConnection(iceConfig);
+    } catch (configErr) {
+      console.warn("[WebRTC] ICE config failed, falling back to STUN-only:", configErr);
+      pc = new RTCPeerConnection(FALLBACK_ICE_SERVERS);
+    }
 
     const { remoteStream, handleTrack } = createRemoteStreamHandler(set);
 

@@ -20,18 +20,29 @@ router.get("/ice-servers", protectRoute, (req, res) => {
   const turnCredential = process.env.TURN_SERVER_CREDENTIAL;
 
   if (turnUrl && turnUsername && turnCredential) {
-    const urls = turnUrl.split(",").map((u) => u.trim());
+    const urls = turnUrl
+      .split(",")
+      .map((u) => u.trim().replace(/[^\x20-\x7E]/g, "")) // strip hidden/control chars
+      .filter((u) => u.length > 0);
 
     for (const url of urls) {
+      // Validate transport parameter if present
+      const transportMatch = url.match(/[?&]transport=(\w+)/i);
+      if (transportMatch) {
+        const transport = transportMatch[1].toLowerCase();
+        if (transport !== "udp" && transport !== "tcp") {
+          console.warn(`Skipping ICE URL with invalid transport "${transport}": ${url}`);
+          continue;
+        }
+      }
+
       if (url.startsWith("stun:")) {
-        // STUN servers don't need credentials
         iceServers.push({ urls: url });
-      } else {
-        // TURN / TURNS servers need credentials
+      } else if (url.startsWith("turn:") || url.startsWith("turns:")) {
         iceServers.push({
           urls: url,
-          username: turnUsername,
-          credential: turnCredential,
+          username: turnUsername.trim(),
+          credential: turnCredential.trim(),
         });
       }
     }
