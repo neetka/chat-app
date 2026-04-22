@@ -5,44 +5,33 @@ const router = express.Router();
 
 // GET /api/call/ice-servers
 // Returns ICE/TURN server configuration for WebRTC peer connections.
-// TURN credentials are read from environment variables so they aren't
-// exposed in the frontend bundle.
 router.get("/ice-servers", protectRoute, (req, res) => {
   const iceServers = [
-    // Free Google STUN servers (sufficient for local / simple NAT)
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
   ];
 
-  // Add TURN server if credentials are configured
-  const turnUrl = process.env.TURN_SERVER_URL;
   const turnUsername = process.env.TURN_SERVER_USERNAME;
   const turnCredential = process.env.TURN_SERVER_CREDENTIAL;
 
-  if (turnUrl && turnUsername && turnCredential) {
-    const urls = turnUrl
-      .split(",")
-      .map((u) => u.trim().replace(/[^\x20-\x7E]/g, "")) // strip hidden/control chars
-      .filter((u) => u.length > 0);
+  if (turnUsername && turnCredential) {
+    // Metered.ca TURN server URLs (standard format)
+    const turnUrls = [
+      "stun:stun.relay.metered.ca:80",
+      "turn:global.relay.metered.ca:80",
+      "turn:global.relay.metered.ca:80?transport=tcp",
+      "turn:global.relay.metered.ca:443",
+      "turns:global.relay.metered.ca:443?transport=tcp",
+    ];
 
-    for (const url of urls) {
-      // Validate transport parameter if present
-      const transportMatch = url.match(/[?&]transport=(\w+)/i);
-      if (transportMatch) {
-        const transport = transportMatch[1].toLowerCase();
-        if (transport !== "udp" && transport !== "tcp") {
-          console.warn(`Skipping ICE URL with invalid transport "${transport}": ${url}`);
-          continue;
-        }
-      }
-
+    for (const url of turnUrls) {
       if (url.startsWith("stun:")) {
         iceServers.push({ urls: url });
-      } else if (url.startsWith("turn:") || url.startsWith("turns:")) {
+      } else {
         iceServers.push({
           urls: url,
-          username: turnUsername.trim(),
-          credential: turnCredential.trim(),
+          username: turnUsername,
+          credential: turnCredential,
         });
       }
     }
@@ -52,15 +41,12 @@ router.get("/ice-servers", protectRoute, (req, res) => {
 });
 
 // GET /api/call/health — public diagnostic (no auth required)
-// Reports whether TURN is configured without exposing credentials
 router.get("/health", (req, res) => {
-  const turnUrl = process.env.TURN_SERVER_URL;
   const turnUsername = process.env.TURN_SERVER_USERNAME;
   const turnCredential = process.env.TURN_SERVER_CREDENTIAL;
 
   res.json({
-    turnConfigured: !!(turnUrl && turnUsername && turnCredential),
-    turnUrlCount: turnUrl ? turnUrl.split(",").length : 0,
+    turnConfigured: !!(turnUsername && turnCredential),
     hasUsername: !!turnUsername,
     hasCredential: !!turnCredential,
   });
