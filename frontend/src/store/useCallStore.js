@@ -5,13 +5,23 @@ const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
     {
       urls: "turn:openrelay.metered.ca:443",
       username: "openrelayproject",
       credential: "openrelayproject",
     },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ],
 };
+
+const CONNECTION_TIMEOUT_MS = 20000; // 20 seconds to establish connection
 
 const createRemoteStreamHandler = (set) => {
   const remoteStream = new MediaStream();
@@ -55,6 +65,7 @@ export const useCallStore = create((set, get) => ({
   _durationInterval: null,
   _pendingCandidates: [],
   _incomingOffer: null,
+  _connectionTimeout: null,
 
   // ── Internal: start the call timer ────────────────────────
   _startCallTimer: () => {
@@ -94,7 +105,12 @@ export const useCallStore = create((set, get) => ({
       console.log("Peer connection state:", state);
 
       if (state === "connected") {
-        const { callStatus } = get();
+        const { callStatus, _connectionTimeout } = get();
+        // Clear the connection timeout since we've connected successfully
+        if (_connectionTimeout) {
+          clearTimeout(_connectionTimeout);
+          set({ _connectionTimeout: null });
+        }
         if (callStatus !== "connected") {
           set({ callStatus: "connected" });
           get()._startCallTimer();
@@ -247,6 +263,17 @@ export const useCallStore = create((set, get) => ({
       // pc.onconnectionstatechange will transition to "connected"
       // once the peer connection is actually established.
       set({ _incomingOffer: null });
+
+      // Start a timeout — if the connection isn't established in time, clean up
+      const timeout = setTimeout(() => {
+        const { callStatus } = get();
+        if (callStatus === "connecting") {
+          console.warn("Connection timed out after", CONNECTION_TIMEOUT_MS, "ms");
+          toast.error("Connection timed out. Please try again.");
+          get()._cleanup();
+        }
+      }, CONNECTION_TIMEOUT_MS);
+      set({ _connectionTimeout: timeout });
     } catch (error) {
       console.error("Error accepting call:", error);
 
@@ -366,6 +393,10 @@ export const useCallStore = create((set, get) => ({
 
       if (!peerConnection) return;
 
+      // Immediately transition from "calling" → "connecting" so the
+      // caller sees that the other party picked up
+      set({ callStatus: "connecting" });
+
       try {
         await peerConnection.setRemoteDescription(
           new RTCSessionDescription(answer)
@@ -382,6 +413,18 @@ export const useCallStore = create((set, get) => ({
         }
 
         set({ _pendingCandidates: [] });
+
+        // Start a timeout — if peer connection doesn't reach "connected"
+        // within the limit, clean up gracefully
+        const timeout = setTimeout(() => {
+          const { callStatus } = get();
+          if (callStatus === "connecting") {
+            console.warn("Connection timed out after", CONNECTION_TIMEOUT_MS, "ms");
+            toast.error("Connection timed out. Please try again.");
+            get()._cleanup();
+          }
+        }, CONNECTION_TIMEOUT_MS);
+        set({ _connectionTimeout: timeout });
 
         // Don't manually force "connected" here.
         // onconnectionstatechange will handle it.
@@ -458,6 +501,7 @@ export const useCallStore = create((set, get) => ({
       remoteStream,
       peerConnection,
       _durationInterval,
+      _connectionTimeout,
     } = get();
 
     if (localStream) {
@@ -480,6 +524,10 @@ export const useCallStore = create((set, get) => ({
       clearInterval(_durationInterval);
     }
 
+    if (_connectionTimeout) {
+      clearTimeout(_connectionTimeout);
+    }
+
     set({
       callStatus: "idle",
       callType: null,
@@ -494,6 +542,7 @@ export const useCallStore = create((set, get) => ({
       _durationInterval: null,
       _pendingCandidates: [],
       _incomingOffer: null,
+      _connectionTimeout: null,
     });
   },
 }));

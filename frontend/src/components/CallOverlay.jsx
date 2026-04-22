@@ -49,28 +49,30 @@ const CallOverlay = () => {
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
-      localVideoRef.current.play().catch(() => {});
+      localVideoRef.current.play().catch(() => { });
     }
   }, [localStream, isConnected]);
 
-  // Attach remote video stream
+  // Attach remote video/audio stream
+  // Re-run when remoteStream changes OR when callStatus transitions to
+  // "connected" (the video element may not have existed earlier).
   useEffect(() => {
     const video = remoteVideoRef.current;
     if (video && remoteStream) {
       console.log("Attaching remote stream to video element...");
       video.srcObject = remoteStream;
-      
+
       const handlePlay = () => {
         video.play().catch((err) => {
           console.warn("Retrying playback due to auto-play policy:", err);
           // Retry playback on next frame
-          requestAnimationFrame(() => video.play().catch(() => {}));
+          requestAnimationFrame(() => video.play().catch(() => { }));
         });
       };
 
       video.addEventListener("loadedmetadata", handlePlay);
       video.addEventListener("canplay", handlePlay);
-      
+
       handlePlay(); // Try immediately
 
       return () => {
@@ -78,13 +80,13 @@ const CallOverlay = () => {
         video.removeEventListener("canplay", handlePlay);
       };
     }
-  }, [remoteStream, isConnected]);
+  }, [remoteStream, callStatus]);
 
   // Play ringtone when ringing or calling
   useEffect(() => {
     if (callStatus === "ringing" || callStatus === "calling") {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      
+
       // Resume context if it was suspended (autoplay policy)
       if (audioCtx.state === "suspended") {
         const resume = () => {
@@ -109,11 +111,11 @@ const CallOverlay = () => {
           oscillator.start();
           setTimeout(() => {
             if (oscillator) {
-              try { oscillator.stop(); } catch (e) {}
+              try { oscillator.stop(); } catch (e) { }
               oscillator = null;
             }
           }, 400);
-        } catch (e) {}
+        } catch (e) { }
       };
 
       playTone();
@@ -123,7 +125,7 @@ const CallOverlay = () => {
       return () => {
         if (interval) clearInterval(interval);
         if (audioCtx.state !== "closed") {
-          audioCtx.close().catch(() => {});
+          audioCtx.close().catch(() => { });
         }
       };
     }
@@ -157,16 +159,15 @@ const CallOverlay = () => {
       {/* Background */}
       <div className="call-overlay__bg" />
 
-      {/* Remote Media (Video or Audio) */}
-      {isConnected && (
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          className={isVideoCall ? "call-overlay__remote-video" : "hidden"}
-          style={!isVideoCall ? { display: "none" } : {}}
-        />
-      )}
+      {/* Remote Media (Video or Audio) — always rendered so the ref
+          is available when remote tracks arrive before "connected" */}
+      <video
+        ref={remoteVideoRef}
+        autoPlay
+        playsInline
+        className={isVideoCall && isConnected ? "call-overlay__remote-video" : ""}
+        style={(!isVideoCall || !isConnected) ? { position: "absolute", width: "1px", height: "1px", opacity: 0, pointerEvents: "none" } : {}}
+      />
 
       {/* Main Content */}
       <div className="call-overlay__content">
@@ -174,11 +175,10 @@ const CallOverlay = () => {
         {showCenteredInfo && (
           <div className="call-overlay__user-info">
             <div
-              className={`call-overlay__avatar ${
-                isCalling || isRinging || isConnecting
-                  ? "call-overlay__avatar--pulsing"
-                  : ""
-              }`}
+              className={`call-overlay__avatar ${isCalling || isRinging || isConnecting
+                ? "call-overlay__avatar--pulsing"
+                : ""
+                }`}
             >
               <img src={remoteAvatar} alt={remoteName} />
             </div>
@@ -275,9 +275,8 @@ const CallOverlay = () => {
             <div className="call-overlay__controls-row">
               <button
                 onClick={toggleMute}
-                className={`call-btn ${
-                  isMuted ? "call-btn--active" : "call-btn--default"
-                }`}
+                className={`call-btn ${isMuted ? "call-btn--active" : "call-btn--default"
+                  }`}
                 title={isMuted ? "Unmute" : "Mute"}
                 id="call-mute-btn"
               >
@@ -291,9 +290,8 @@ const CallOverlay = () => {
               {isVideoCall && (
                 <button
                   onClick={toggleVideo}
-                  className={`call-btn ${
-                    isVideoOff ? "call-btn--active" : "call-btn--default"
-                  }`}
+                  className={`call-btn ${isVideoOff ? "call-btn--active" : "call-btn--default"
+                    }`}
                   title={isVideoOff ? "Turn on camera" : "Turn off camera"}
                   id="call-video-btn"
                 >
