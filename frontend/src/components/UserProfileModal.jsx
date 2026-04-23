@@ -28,15 +28,6 @@ const formatLastSeen = (lastSeen) => {
   return new Date(lastSeen).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
-const StatCard = ({ icon: Icon, label, value, color }) => (
-  <div className="flex flex-col items-center gap-1 p-4 rounded-2xl bg-base-200/60 border border-base-300 flex-1 min-w-0">
-    <div className={`p-2 rounded-xl ${color}`}>
-      <Icon size={18} />
-    </div>
-    <span className="text-2xl font-bold tabular-nums">{value ?? 0}</span>
-    <span className="text-xs text-base-content/50 text-center leading-tight">{label}</span>
-  </div>
-);
 
 const TagChip = ({ label, variant = "primary" }) => {
   const styles = {
@@ -206,34 +197,6 @@ const UserProfileModal = ({ userId, onClose }) => {
               </div>
             )}
 
-            {/* Activity Stats */}
-            {viewedProfile.stats && (
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-base-content/40 mb-3">
-                  Activity
-                </h3>
-                <div className="flex gap-2">
-                  <StatCard
-                    icon={MessageSquare}
-                    label="Messages Sent"
-                    value={viewedProfile.stats.messagesSent}
-                    color="bg-primary/10 text-primary"
-                  />
-                  <StatCard
-                    icon={Phone}
-                    label="Calls Done"
-                    value={viewedProfile.stats.callsDone}
-                    color="bg-green-500/10 text-green-500"
-                  />
-                  <StatCard
-                    icon={PhoneMissed}
-                    label="Missed Calls"
-                    value={viewedProfile.stats.callsMissed}
-                    color="bg-warning/10 text-warning"
-                  />
-                </div>
-              </div>
-            )}
 
             {/* Member since */}
             {viewedProfile.createdAt && (

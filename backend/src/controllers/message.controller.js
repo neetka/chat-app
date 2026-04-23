@@ -167,10 +167,6 @@ export const sendMessage = async (req, res) => {
 
     await newMessage.save();
 
-    // Increment sender's messagesSent stat (non-blocking)
-    User.findByIdAndUpdate(senderId, { $inc: { "stats.messagesSent": 1 } }).catch(
-      (err) => console.error("Error incrementing messagesSent:", err)
-    );
 
     if (group) {
         // Emit to Group Room

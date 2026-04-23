@@ -147,7 +147,6 @@ io.on("connection", async (socket) => {
       // Receiver is offline — record missed call
       try {
         await User.findByIdAndUpdate(to, {
-          $inc: { "stats.callsMissed": 1 },
           $push: {
             missedCallNotifications: {
               $each: [{ fromId: userId, fromName: callerName, fromPic: callerPic, callType, at: new Date() }],
@@ -184,15 +183,7 @@ io.on("connection", async (socket) => {
     if (otherSocketId) {
       io.to(otherSocketId).emit("call:ended", { from: userId });
     }
-    // Increment callsDone for both parties
-    try {
-      await User.updateMany(
-        { _id: { $in: [userId, to] } },
-        { $inc: { "stats.callsDone": 1 } }
-      );
-    } catch (err) {
-      console.error("Error incrementing callsDone:", err);
-    }
+
   });
 
   socket.on("call:ice-candidate", ({ to, candidate }) => {

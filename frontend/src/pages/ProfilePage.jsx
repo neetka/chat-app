@@ -7,15 +7,6 @@ import {
 } from "lucide-react";
 
 // ── Reusable sub-components ──────────────────────────────────────────────────
-const StatCard = ({ icon: Icon, label, value, color }) => (
-  <div className="flex flex-col items-center gap-2 p-5 rounded-2xl bg-base-200/50 border border-base-300 flex-1 transition-transform hover:-translate-y-0.5 hover:shadow-md">
-    <div className={`p-2.5 rounded-xl ${color}`}>
-      <Icon size={20} />
-    </div>
-    <span className="text-3xl font-bold tabular-nums">{value ?? 0}</span>
-    <span className="text-xs text-base-content/50 text-center leading-tight">{label}</span>
-  </div>
-);
 
 const TagChip = ({ label, onRemove, variant = "primary" }) => {
   const styles = {
@@ -175,18 +166,6 @@ const ProfilePage = () => {
                 <p className="text-sm text-primary mt-2 animate-pulse">Updating profile picture…</p>
               )}
             </div>
-          </div>
-        </div>
-
-        {/* ── Activity Stats ─────────────────────────────────────────── */}
-        <div className="bg-base-100 rounded-2xl p-6 shadow-sm border border-base-300">
-          <h2 className="text-xl font-semibold flex items-center gap-2 mb-5">
-            <MessageSquare className="text-primary" size={22} />Activity Stats
-          </h2>
-          <div className="flex gap-4">
-            <StatCard icon={MessageSquare} label="Messages Sent"  value={authUser?.stats?.messagesSent} color="bg-primary/10 text-primary" />
-            <StatCard icon={Phone}         label="Calls Done"     value={authUser?.stats?.callsDone}    color="bg-green-500/10 text-green-500" />
-            <StatCard icon={PhoneMissed}   label="Missed Calls"   value={authUser?.stats?.callsMissed}  color="bg-warning/10 text-warning" />
           </div>
         </div>
 

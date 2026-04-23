@@ -23,12 +23,6 @@ const userSchema = new mongoose.Schema(
     skills:    { type: [String], default: [] },
     interests: { type: [String], default: [] },
 
-    // ── Activity Stats ────────────────────────────────────────
-    stats: {
-      messagesSent: { type: Number, default: 0 },
-      callsDone:    { type: Number, default: 0 },
-      callsMissed:  { type: Number, default: 0 },
-    },
 
     // ── Last Seen ────────────────────────────────────────────
     lastSeen: { type: Date, default: null },

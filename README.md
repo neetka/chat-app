@@ -31,6 +31,7 @@ A full-stack real-time chat application with **end-to-end encryption**, **voice 
 - Connection state tracking with automatic timeout
 - Picture-in-picture local video preview
 - Works across different networks (production-ready with TURN relay)
+- Fallback to STUN-only mode for robust connectivity
 
 ### 📧 Offline Email Notifications
 
@@ -54,6 +55,14 @@ A full-stack real-time chat application with **end-to-end encryption**, **voice 
 - Image sharing via Cloudinary
 - Message encryption indicators (🔒)
 - Message deletion
+
+### 👤 Advanced User Profiles
+
+- **Comprehensive Profiles** with bio, technical skills, and personal interests
+- **Activity Dashboards** tracking messages sent, calls made, and missed calls
+- **Real-time Presence** with last-seen tracking via Socket.io
+- **Interactive UI** featuring a slide-in profile drawer and tag-based editing
+- Public profile retrieval for viewing other users' details
 
 ### 🎨 Modern UI/UX
 
@@ -257,6 +266,12 @@ A full-stack real-time chat application with **end-to-end encryption**, **voice 
 | `POST`   | `/`                | Create a group        | Yes  |
 | `GET`    | `/`                | Get user's groups     | Yes  |
 
+### Profiles (`/api/profile`)
+
+| Method   | Endpoint           | Description           | Auth |
+| -------- | ------------------ | --------------------- | ---- |
+| `GET`    | `/:userId`         | Get public profile    | Yes  |
+
 ### Calling (`/api/call`)
 
 | Method | Endpoint        | Description                          | Auth |
@@ -387,7 +402,7 @@ chat-app/
 │       ├── lib/                 # DB, socket.io, utilities
 │       ├── middleware/          # Auth, rate limiting
 │       ├── models/              # Mongoose schemas
-│       ├── routes/              # Express routes (auth, messages, groups, call, keys)
+│       ├── routes/              # Express routes (auth, messages, groups, call, keys, profile)
 │       ├── seeds/               # Database seed scripts
 │       └── index.js             # Server entry point
 ├── frontend/
