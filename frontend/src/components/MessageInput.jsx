@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import { useChatStore } from "../store/useChatStore";
-import { Image, Send, X, Smile, Paperclip } from "lucide-react";
+import { Image, Send, X, Smile, Paperclip, Reply } from "lucide-react";
 import toast from "react-hot-toast";
 import EmojiPicker from "emoji-picker-react";
 
@@ -11,7 +11,13 @@ const MessageInput = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const { 
     sendTypingEvent, 
-    sendStopTypingEvent 
+    sendStopTypingEvent,
+    sendGroupTypingEvent,
+    sendStopGroupTypingEvent,
+    selectedUser,
+    selectedGroup,
+    replyingTo,
+    clearReplyingTo,
   } = useChatStore();
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -52,23 +58,27 @@ const MessageInput = () => {
     };
     reader.readAsDataURL(file);
   };
-  
-  const { selectedUser } = useChatStore();
 
   const handleInputChange = (e) => {
     setText(e.target.value);
     
-    // Typing indicator logic (P2P only for now)
-    if (!selectedUser) return;
-    
-    sendTypingEvent(selectedUser._id);
+    // Typing indicator logic
+    if (selectedUser) {
+      sendTypingEvent(selectedUser._id);
+    } else if (selectedGroup) {
+      sendGroupTypingEvent(selectedGroup._id);
+    }
     
     // Clear existing timeout
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     
     // Set new timeout to stop typing after 2 seconds of inactivity
     typingTimeoutRef.current = setTimeout(() => {
-        sendStopTypingEvent(selectedUser._id);
+        if (selectedUser) {
+          sendStopTypingEvent(selectedUser._id);
+        } else if (selectedGroup) {
+          sendStopGroupTypingEvent(selectedGroup._id);
+        }
     }, 2000);
   };
 
@@ -87,10 +97,12 @@ const MessageInput = () => {
         image: imagePreview,
       });
 
-      // Clear typing indicator immediately upon sending (P2P only)
+      // Clear typing indicator immediately upon sending
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (selectedUser) {
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
           sendStopTypingEvent(selectedUser._id);
+      } else if (selectedGroup) {
+          sendStopGroupTypingEvent(selectedGroup._id);
       }
 
       // Clear form
@@ -104,6 +116,30 @@ const MessageInput = () => {
 
   return (
     <div className="p-4 bg-base-100 border-t border-base-300">
+      {/* Reply Context Display */}
+      {replyingTo && (
+        <div className="mb-3 p-3 bg-base-200/60 rounded-lg border border-base-300 flex items-start justify-between">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <Reply className="size-4 mt-0.5 flex-shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-base-content/70">
+                Reply to {replyingTo?.senderId?.fullName || "User"}
+              </p>
+              <p className="text-xs text-base-content/60 break-words whitespace-pre-wrap line-clamp-2">
+                {replyingTo?.decryptedText || replyingTo?.text || "Image attachment"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={clearReplyingTo}
+            className="btn btn-ghost btn-xs ml-2 flex-shrink-0"
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
+
       {/* Image Preview */}
       {imagePreview && (
         <div className="mb-3 p-2 bg-base-200 rounded-lg inline-block">

@@ -6,7 +6,7 @@ import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton";
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
-import { Lock, LockOpen, AlertCircle, ChevronDown, Check, CheckCheck, Timer, Smile, Plus } from "lucide-react";
+import { Lock, LockOpen, AlertCircle, ChevronDown, Check, CheckCheck, Timer, Smile, Plus, Reply } from "lucide-react";
 
 // Encryption status indicator component
 const EncryptionBadge = ({ message }) => {
@@ -50,6 +50,9 @@ const ChatContainer = () => {
     markMessagesAsSeen,
     cleanupExpiredMessages,
     addReaction,
+    setReplyingTo,
+    isTyping,
+    groupTyping,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const [openMenuFor, setOpenMenuFor] = useState(null);
@@ -229,6 +232,16 @@ const ChatContainer = () => {
                             ))}
                         </div>
                         
+                        <button
+                          className="w-full text-left px-3 py-2 hover:bg-base-200"
+                          onClick={() => {
+                            setReplyingTo(message);
+                            setOpenMenuFor(null);
+                          }}
+                        >
+                          Reply
+                        </button>
+                        
                         {isOwnMessage && (
                             <button
                               className="w-full text-left px-3 py-2 hover:bg-base-200"
@@ -273,6 +286,27 @@ const ChatContainer = () => {
                     className="max-w-[250px] rounded-lg mb-2 cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => window.open(message.image, "_blank")}
                   />
+                )}
+
+                {/* Replied Message Display */}
+                {message.replyTo && (
+                  <div className={`mb-2 p-2 rounded border-l-2 ${
+                    isOwnMessage
+                      ? "border-primary/50 bg-primary/10"
+                      : "border-base-300 bg-base-300/30"
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <Reply className="size-3 mt-0.5 flex-shrink-0 opacity-50" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium opacity-70">
+                          {message.replyTo?.senderId?.fullName || "User"}
+                        </p>
+                        <p className="text-xs opacity-60 break-words whitespace-pre-wrap line-clamp-2">
+                          {message.replyTo?.decryptedText || message.replyTo?.text || "Image attachment"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
                 
                 {/* Editing Mode */}
@@ -389,6 +423,49 @@ const ChatContainer = () => {
             </div>
           );
         })}
+
+        {/* P2P Typing Indicator */}
+        {selectedUser && isTyping && (
+          <div className="chat chat-start mt-4">
+            <div className="chat-image avatar">
+              <div className="size-9 rounded-full ring-2 ring-offset-2 ring-offset-base-100 ring-secondary/30">
+                <img
+                  src={selectedUser?.profilePic || "/avatar.png"}
+                  alt="profile pic"
+                  className="object-cover"
+                />
+              </div>
+            </div>
+            <div className="chat-bubble bg-base-200 text-base-content">
+              <span className="inline-flex gap-1">
+                <span className="inline-block w-2 h-2 bg-base-content/40 rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
+                <span className="inline-block w-2 h-2 bg-base-content/40 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
+                <span className="inline-block w-2 h-2 bg-base-content/40 rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Group Typing Indicator */}
+        {selectedGroup && Object.keys(groupTyping).length > 0 && (
+          <div className="chat chat-start mt-4">
+            <div className="chat-bubble bg-base-200 text-base-content text-xs">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex gap-1">
+                  <span className="inline-block w-1.5 h-1.5 bg-base-content/40 rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
+                  <span className="inline-block w-1.5 h-1.5 bg-base-content/40 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
+                  <span className="inline-block w-1.5 h-1.5 bg-base-content/40 rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
+                </span>
+                <span className="opacity-70">
+                  {Object.values(groupTyping)
+                    .map(u => u.name)
+                    .join(", ")} {Object.keys(groupTyping).length === 1 ? "is" : "are"} typing...
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={messageEndRef} />
       </div>
 

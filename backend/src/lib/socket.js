@@ -55,6 +55,17 @@ io.on("connection", async (socket) => {
     } catch (error) {
        console.error("Error updating delivery status:", error);
     }
+
+    // ── Send & clear missed call notifications ───────────────
+    try {
+      const user = await User.findById(userId).select("missedCallNotifications");
+      if (user?.missedCallNotifications?.length > 0) {
+        socket.emit("call:missed_notifications", user.missedCallNotifications);
+        await User.findByIdAndUpdate(userId, { $set: { missedCallNotifications: [] } });
+      }
+    } catch (err) {
+      console.error("Error sending missed call notifications:", err);
+    }
   }
 
   // io.emit() is used to send events to all the connected clients
@@ -72,6 +83,24 @@ io.on("connection", async (socket) => {
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("stopTyping", { senderId: userId });
     }
+  });
+
+  // Group typing indicators
+  socket.on("groupTyping", async ({ groupId }) => {
+    try {
+      const group = await User.findById(userId).select("fullName profilePic");
+      io.to(`group:${groupId}`).emit("groupTyping", { 
+        senderId: userId,
+        senderName: group?.fullName || "User",
+        senderPic: group?.profilePic || "/avatar.png"
+      });
+    } catch (err) {
+      console.error("Error in groupTyping:", err);
+    }
+  });
+
+  socket.on("stopGroupTyping", ({ groupId }) => {
+    io.to(`group:${groupId}`).emit("stopGroupTyping", { senderId: userId });
   });
 
   socket.on("deleteMessage", ({ receiverId, messageId }) => {
@@ -92,19 +121,21 @@ io.on("connection", async (socket) => {
   // ── WebRTC Signaling Events ──────────────────────────────────
   socket.on("call:initiate", async ({ to, offer, callType }) => {
     const receiverSocketId = userSocketMap[to];
-    if (receiverSocketId) {
-      let callerName = "User";
-      let callerPic = "";
-      try {
-        const caller = await User.findById(userId).select("fullName profilePic");
-        if (caller) {
-          callerName = caller.fullName;
-          callerPic = caller.profilePic || "";
-        }
-      } catch (err) {
-        console.error("Error fetching caller info:", err);
-      }
 
+    // Fetch caller info (needed for both online + offline paths)
+    let callerName = "User";
+    let callerPic = "";
+    try {
+      const caller = await User.findById(userId).select("fullName profilePic");
+      if (caller) {
+        callerName = caller.fullName;
+        callerPic = caller.profilePic || "";
+      }
+    } catch (err) {
+      console.error("Error fetching caller info:", err);
+    }
+
+    if (receiverSocketId) {
       io.to(receiverSocketId).emit("call:incoming", {
         from: userId,
         callerName,
@@ -113,6 +144,20 @@ io.on("connection", async (socket) => {
         callType,
       });
     } else {
+      // Receiver is offline — record missed call
+      try {
+        await User.findByIdAndUpdate(to, {
+          $inc: { "stats.callsMissed": 1 },
+          $push: {
+            missedCallNotifications: {
+              $each: [{ fromId: userId, fromName: callerName, fromPic: callerPic, callType, at: new Date() }],
+              $slice: -20, // keep only last 20
+            },
+          },
+        });
+      } catch (err) {
+        console.error("Error recording missed call:", err);
+      }
       socket.emit("call:user-offline", { userId: to });
     }
   });
@@ -134,10 +179,19 @@ io.on("connection", async (socket) => {
     }
   });
 
-  socket.on("call:end", ({ to }) => {
+  socket.on("call:end", async ({ to }) => {
     const otherSocketId = userSocketMap[to];
     if (otherSocketId) {
       io.to(otherSocketId).emit("call:ended", { from: userId });
+    }
+    // Increment callsDone for both parties
+    try {
+      await User.updateMany(
+        { _id: { $in: [userId, to] } },
+        { $inc: { "stats.callsDone": 1 } }
+      );
+    } catch (err) {
+      console.error("Error incrementing callsDone:", err);
     }
   });
 
@@ -152,13 +206,22 @@ io.on("connection", async (socket) => {
   });
   // ── End WebRTC Signaling ─────────────────────────────────────
   
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     console.log("A user disconnected", socket.id);
     if (userId && userSocketMap[userId] === socket.id) {
        delete userSocketMap[userId];
+       // Update lastSeen timestamp
+       try {
+         const lastSeen = new Date();
+         await User.findByIdAndUpdate(userId, { lastSeen });
+         io.emit("user:lastSeen", { userId, lastSeen });
+       } catch (err) {
+         console.error("Error updating lastSeen:", err);
+       }
     }
     io.emit("getOnlineUsers", Object.keys(userSocketMap));
   });
 });
 
 export { io, app, server };
+

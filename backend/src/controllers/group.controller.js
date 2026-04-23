@@ -65,6 +65,7 @@ export const getGroupMessages = async (req, res) => {
         const { id: groupId } = req.params;
         const messages = await Message.find({ groupId })
             .populate("senderId", "fullName profilePic") // We need sender info for group chats
+            .populate("replyTo") // Populate the replied message
             .sort({ createdAt: 1 });
             
         res.status(200).json(messages);

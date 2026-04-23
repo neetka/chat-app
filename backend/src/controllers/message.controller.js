@@ -85,7 +85,7 @@ export const getMessages = async (req, res) => {
         { senderId: myId, receiverId: userToChatId },
         { senderId: userToChatId, receiverId: myId },
       ],
-    });
+    }).populate('replyTo');
 
     // Return messages - server only stores ciphertext, never plaintext
     // Decryption happens client-side using shared secret
@@ -104,6 +104,7 @@ export const sendMessage = async (req, res) => {
       ciphertext, // AES-256-GCM encrypted message content
       iv, // Initialization vector for AES-GCM (12 bytes, base64)
       duration, // Duration for disappearing messages in seconds
+      replyTo, // ID of the message being replied to
     } = req.body;
     const { id: receiverId } = req.params; // receiverId can be userId OR groupId
     const senderId = req.user._id;
@@ -125,6 +126,10 @@ export const sendMessage = async (req, res) => {
 
     if (duration && duration > 0) {
       messageData.expiresAt = new Date(Date.now() + duration * 1000);
+    }
+
+    if (replyTo) {
+      messageData.replyTo = replyTo;
     }
 
     if (group) {
@@ -161,6 +166,11 @@ export const sendMessage = async (req, res) => {
     }
 
     await newMessage.save();
+
+    // Increment sender's messagesSent stat (non-blocking)
+    User.findByIdAndUpdate(senderId, { $inc: { "stats.messagesSent": 1 } }).catch(
+      (err) => console.error("Error incrementing messagesSent:", err)
+    );
 
     if (group) {
         // Emit to Group Room

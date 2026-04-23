@@ -18,6 +18,11 @@ export const useAuthStore = create((set, get) => ({
   onlineUsers: [],
   socket: null,
 
+  // ── Real-time presence & alerts ───────────────────────────
+  lastSeenMap: {},        // { [userId]: ISOString }
+  missedCallAlerts: [],   // [{ fromId, fromName, fromPic, callType, at }]
+  unreadCounts: {},       // { [userId]: number }
+
   checkAuth: async () => {
     try {
       const res = await axiosInstance.get("/auth/check");
@@ -91,6 +96,32 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  // ── Alert helpers ──────────────────────────────────────────
+  clearUnreadCount: (userId) => {
+    set((state) => {
+      const counts = { ...state.unreadCounts };
+      delete counts[userId];
+      return { unreadCounts: counts };
+    });
+  },
+
+  addUnreadCount: (userId) => {
+    set((state) => ({
+      unreadCounts: {
+        ...state.unreadCounts,
+        [userId]: (state.unreadCounts[userId] || 0) + 1,
+      },
+    }));
+  },
+
+  clearMissedCallAlert: (fromId) => {
+    set((state) => ({
+      missedCallAlerts: state.missedCallAlerts.filter((a) => a.fromId !== fromId),
+    }));
+  },
+
+  clearAllMissedCallAlerts: () => set({ missedCallAlerts: [] }),
+
   changePassword: async (data) => {
     try {
       await axiosInstance.put("/auth/change-password", data);
@@ -134,6 +165,26 @@ export const useAuthStore = create((set, get) => ({
       set({ onlineUsers: userIds });
     });
 
+    // ── Last seen ────────────────────────────────────────────
+    socket.on("user:lastSeen", ({ userId, lastSeen }) => {
+      set((state) => ({
+        lastSeenMap: { ...state.lastSeenMap, [userId]: lastSeen },
+      }));
+    });
+
+    // ── Missed call notifications delivered on connect ───────
+    socket.on("call:missed_notifications", (notifications) => {
+      set({ missedCallAlerts: notifications });
+      notifications.forEach((notif) => {
+        const icon = notif.callType === "video" ? "📹" : "📞";
+        toast(`Missed ${notif.callType} call from ${notif.fromName}`, {
+          icon,
+          duration: 8000,
+          style: { background: "#1e293b", color: "#f1f5f9" },
+        });
+      });
+    });
+
     // Setup WebRTC call signaling listeners
     import("./useCallStore").then(({ useCallStore }) => {
       const callStore = useCallStore.getState();
@@ -149,7 +200,7 @@ export const useAuthStore = create((set, get) => ({
       });
     });
 
-    // Listen for new messages to update sidebar order (for unselected chats)
+    // ── Track unread counts for non-selected chats ───────────
     socket.on("newMessage", (newMessage) => {
       // Dynamically import to avoid circular dependency
       import("./useChatStore").then(({ useChatStore }) => {
@@ -160,6 +211,10 @@ export const useAuthStore = create((set, get) => ({
         // (selected user messages are handled in subscribeToMessages)
         if (!selectedUser || newMessage.senderId !== selectedUser._id) {
           chatStore.moveUserToTop(newMessage.senderId);
+          // Increment unread count for that sender
+          if (newMessage.senderId) {
+            get().addUnreadCount(newMessage.senderId);
+          }
         }
       });
     });

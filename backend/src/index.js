@@ -13,6 +13,7 @@ import messageRoutes from "./routes/message.route.js";
 import groupRoutes from "./routes/group.route.js";
 import keyRoutes from "./routes/key.route.js";
 import callRoutes from "./routes/call.route.js";
+import profileRoutes from "./routes/profile.route.js";
 import { app, server } from "./lib/socket.js";
 
 dotenv.config();
@@ -37,6 +38,8 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/keys", keyRoutes);
 app.use("/api/call", callRoutes);
+app.use("/api/profile", profileRoutes);
+
 
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../frontend/dist")));

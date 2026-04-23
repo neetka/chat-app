@@ -70,8 +70,13 @@ export const useChatStore = create((set, get) => ({
   encryptionEnabled: true, // E2EE is enabled by default
   disappearingDuration: 0, // 0 = off, value in seconds
   isTyping: false,
+  replyingTo: null, // Message being replied to
+  groupTyping: {}, // { userId: { name, pic, timestamp } } for group typing indicators
 
   setDisappearingDuration: (duration) => set({ disappearingDuration: duration }),
+
+  setReplyingTo: (message) => set({ replyingTo: message }),
+  clearReplyingTo: () => set({ replyingTo: null }),
 
   sendTypingEvent: (receiverId) => {
     const socket = useAuthStore.getState().socket;
@@ -81,6 +86,16 @@ export const useChatStore = create((set, get) => ({
   sendStopTypingEvent: (receiverId) => {
     const socket = useAuthStore.getState().socket;
     socket.emit("stopTyping", { receiverId });
+  },
+
+  sendGroupTypingEvent: (groupId) => {
+    const socket = useAuthStore.getState().socket;
+    socket.emit("groupTyping", { groupId });
+  },
+
+  sendStopGroupTypingEvent: (groupId) => {
+    const socket = useAuthStore.getState().socket;
+    socket.emit("stopGroupTyping", { groupId });
   },
 
   cleanupExpiredMessages: () => {
@@ -220,9 +235,12 @@ export const useChatStore = create((set, get) => ({
       }
 
       // Add disappearing duration if set
-      const { disappearingDuration } = get();
+      const { disappearingDuration, replyingTo } = get();
       if (disappearingDuration > 0) {
           payload.duration = disappearingDuration;
+      }
+      if (replyingTo) {
+          payload.replyTo = replyingTo._id;
       }
 
       const res = await axiosInstance.post(
@@ -242,6 +260,9 @@ export const useChatStore = create((set, get) => ({
       };
 
       set({ messages: [...messages, localMessage] });
+
+      // Clear reply context after sending
+      set({ replyingTo: null });
 
       // Move user to top if P2P (Groups might need own re-ordering logic)
       if (selectedUser) get().moveUserToTop(selectedUser._id);
@@ -452,6 +473,28 @@ export const useChatStore = create((set, get) => ({
         const { selectedUser } = get();
         if (selectedUser && selectedUser._id === senderId) {
             set({ isTyping: false });
+        }
+     });
+
+     socket.on("groupTyping", ({ senderId, senderName, senderPic }) => {
+        const { selectedGroup, groupTyping } = get();
+        if (selectedGroup) {
+            const newGroupTyping = { ...groupTyping };
+            newGroupTyping[senderId] = { 
+                name: senderName, 
+                pic: senderPic,
+                timestamp: Date.now()
+            };
+            set({ groupTyping: newGroupTyping });
+        }
+     });
+
+     socket.on("stopGroupTyping", ({ senderId }) => {
+        const { selectedGroup, groupTyping } = get();
+        if (selectedGroup) {
+            const newGroupTyping = { ...groupTyping };
+            delete newGroupTyping[senderId];
+            set({ groupTyping: newGroupTyping });
         }
      });
 

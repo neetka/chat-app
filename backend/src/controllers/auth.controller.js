@@ -34,6 +34,11 @@ export const signup = async (req, res) => {
         fullName: newUser.fullName,
         email: newUser.email,
         profilePic: newUser.profilePic,
+        bio: newUser.bio,
+        skills: newUser.skills,
+        interests: newUser.interests,
+        stats: newUser.stats,
+        lastSeen: newUser.lastSeen,
       });
     } else {
       res.status(400).json({ message: "Invalid user data" });
@@ -61,6 +66,11 @@ export const login = async (req, res) => {
       fullName: user.fullName,
       email: user.email,
       profilePic: user.profilePic,
+      bio: user.bio,
+      skills: user.skills,
+      interests: user.interests,
+      stats: user.stats,
+      lastSeen: user.lastSeen,
     });
   } catch (error) {
     console.log("Error in login controller:", error);
@@ -84,7 +94,7 @@ export const logout = (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { profilePic, fullName } = req.body;
+    const { profilePic, fullName, bio, skills, interests } = req.body;
     const userId = req.user._id;
 
     const updateData = {};
@@ -93,10 +103,10 @@ export const updateProfile = async (req, res) => {
       const uploadResponse = await cloudinary.uploader.upload(profilePic);
       updateData.profilePic = uploadResponse.secure_url;
     }
-
-    if (fullName) {
-      updateData.fullName = fullName;
-    }
+    if (fullName)    updateData.fullName = fullName;
+    if (bio !== undefined) updateData.bio = bio.slice(0, 200);
+    if (skills)    updateData.skills    = skills.slice(0, 10);
+    if (interests) updateData.interests = interests.slice(0, 10);
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ message: "No data to update" });
@@ -104,10 +114,24 @@ export const updateProfile = async (req, res) => {
 
     const updatedUser = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
-    }).select("-password");
+    }).select("-password -missedCallNotifications");
     res.status(200).json(updatedUser);
   } catch (error) {
     console.log("Error in update profile:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const getPublicProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).select(
+      "fullName profilePic bio skills interests stats lastSeen createdAt"
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.status(200).json(user);
+  } catch (error) {
+    console.log("Error in getPublicProfile:", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
