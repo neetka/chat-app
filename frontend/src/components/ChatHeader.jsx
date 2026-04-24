@@ -87,29 +87,32 @@ const ChatHeader = () => {
 
         {/* ── Right: actions ─────────────────────────────────── */}
         <div className="flex items-center gap-1">
-          {/* Voice & Video Call (P2P only) */}
-          {!isGroup && selectedUser && (
-            <>
-              <button
-                onClick={() => initiateCall(selectedUser, "voice", socket)}
-                className="btn btn-sm btn-ghost text-base-content/70 hover:text-success"
-                title="Voice call"
-                disabled={!isOnline || callStatus !== "idle"}
-                id="voice-call-btn"
-              >
-                <Phone className="size-5" />
-              </button>
-              <button
-                onClick={() => initiateCall(selectedUser, "video", socket)}
-                className="btn btn-sm btn-ghost text-base-content/70 hover:text-info"
-                title="Video call"
-                disabled={!isOnline || callStatus !== "idle"}
-                id="video-call-btn"
-              >
-                <Video className="size-5" />
-              </button>
-            </>
-          )}
+          {/* Voice & Video Call (P2P only, friends only) */}
+          {!isGroup && selectedUser && (() => {
+            const isFriendForCalls = selectedUser?.friendshipStatus === "accepted";
+            return (
+              <>
+                <button
+                  onClick={() => initiateCall(selectedUser, "voice", socket)}
+                  className="btn btn-sm btn-ghost text-base-content/70 hover:text-success"
+                  title={isFriendForCalls ? "Voice call" : "Add as friend to call"}
+                  disabled={!isOnline || callStatus !== "idle" || !isFriendForCalls}
+                  id="voice-call-btn"
+                >
+                  <Phone className="size-5" />
+                </button>
+                <button
+                  onClick={() => initiateCall(selectedUser, "video", socket)}
+                  className="btn btn-sm btn-ghost text-base-content/70 hover:text-info"
+                  title={isFriendForCalls ? "Video call" : "Add as friend to call"}
+                  disabled={!isOnline || callStatus !== "idle" || !isFriendForCalls}
+                  id="video-call-btn"
+                >
+                  <Video className="size-5" />
+                </button>
+              </>
+            );
+          })()}
 
           {/* Add Member (Groups & Admin only) */}
           {isGroup && (selectedGroup.admin?._id === authUser._id || selectedGroup.admin === authUser._id) && (

@@ -3,6 +3,7 @@ import http from "http";
 import express from "express";
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
+import FriendRequest from "../models/friendRequest.model.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -120,6 +121,25 @@ io.on("connection", async (socket) => {
 
   // ── WebRTC Signaling Events ──────────────────────────────────
   socket.on("call:initiate", async ({ to, offer, callType }) => {
+    // ── Check friendship before allowing call ──────────────
+    try {
+      const friendship = await FriendRequest.findOne({
+        $or: [
+          { senderId: userId, receiverId: to },
+          { senderId: to, receiverId: userId },
+        ],
+        status: "accepted",
+      });
+      if (!friendship) {
+        socket.emit("call:not-friends", { userId: to });
+        return;
+      }
+    } catch (err) {
+      console.error("Error checking friendship for call:", err);
+      socket.emit("call:not-friends", { userId: to });
+      return;
+    }
+
     const receiverSocketId = userSocketMap[to];
 
     // Fetch caller info (needed for both online + offline paths)

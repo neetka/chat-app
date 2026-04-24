@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
+import { useFriendStore } from "../store/useFriendStore";
 import SidebarSkeleton from "./skeletons/SidebarSkeleton";
-import { Users, Plus, PhoneMissed } from "lucide-react";
+import { Users, Plus, PhoneMissed, UserPlus, UserCheck, Clock as ClockIcon, Check, X } from "lucide-react";
 import CreateGroupModal from "./CreateGroupModal";
 
 // ── helper ─────────────────────────────────────────────────────────────────
@@ -17,6 +18,32 @@ const formatLastSeen = (lastSeen) => {
   if (hours < 24)   return `${hours}h ago`;
   if (days < 7)     return `${days}d ago`;
   return new Date(lastSeen).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
+
+// ── Friendship status badge ────────────────────────────────────────────────
+const FriendshipBadge = ({ status, direction }) => {
+  if (status === "accepted") {
+    return (
+      <span className="tooltip tooltip-left" data-tip="Friends">
+        <UserCheck size={13} className="text-success" />
+      </span>
+    );
+  }
+  if (status === "pending" && direction === "sent") {
+    return (
+      <span className="tooltip tooltip-left" data-tip="Request sent">
+        <ClockIcon size={13} className="text-warning" />
+      </span>
+    );
+  }
+  if (status === "pending" && direction === "received") {
+    return (
+      <span className="tooltip tooltip-left" data-tip="Wants to connect">
+        <UserPlus size={13} className="text-info animate-pulse" />
+      </span>
+    );
+  }
+  return null;
 };
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -34,6 +61,13 @@ const Sidebar = () => {
     clearUnreadCount,
   } = useAuthStore();
 
+  const {
+    pendingRequests,
+    fetchPending,
+    acceptRequest,
+    rejectRequest,
+  } = useFriendStore();
+
   const [showOnlineOnly, setShowOnlineOnly] = useState(false);
   const [activeTab,      setActiveTab]      = useState("chats");
   const [isModalOpen,    setIsModalOpen]    = useState(false);
@@ -41,13 +75,26 @@ const Sidebar = () => {
   useEffect(() => {
     getUsers();
     getGroups();
-  }, [getUsers, getGroups]);
+    fetchPending();
+  }, [getUsers, getGroups, fetchPending]);
 
   const filteredUsers = showOnlineOnly
     ? users.filter((u) => onlineUsers.includes(u._id))
     : users;
 
   if (isUsersLoading || isGroupsLoading) return <SidebarSkeleton />;
+
+  const handleAcceptRequest = async (requestId) => {
+    const success = await acceptRequest(requestId);
+    if (success) getUsers(); // Refresh sidebar user list with updated friendship status
+  };
+
+  const handleRejectRequest = async (requestId) => {
+    const success = await rejectRequest(requestId);
+    if (success) getUsers();
+  };
+
+  const tabs = ["chats", "groups", "requests"];
 
   return (
     <aside className="h-full w-20 lg:w-72 border-r border-base-300 flex flex-col transition-all duration-200">
@@ -61,10 +108,10 @@ const Sidebar = () => {
 
         {/* Tabs */}
         <div className="flex bg-base-200 p-1 rounded-lg mb-4">
-          {["chats", "groups"].map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab}
-              className={`flex-1 flex items-center justify-center py-1 text-sm rounded-md transition-colors capitalize ${
+              className={`flex-1 flex items-center justify-center py-1 text-sm rounded-md transition-colors capitalize relative ${
                 activeTab === tab
                   ? "bg-white text-primary shadow-sm"
                   : "text-base-content/60 hover:text-base-content"
@@ -72,6 +119,12 @@ const Sidebar = () => {
               onClick={() => setActiveTab(tab)}
             >
               {tab}
+              {/* Pending count badge on requests tab */}
+              {tab === "requests" && pendingRequests.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-error text-error-content text-[10px] font-bold flex items-center justify-center">
+                  {pendingRequests.length > 9 ? "9+" : pendingRequests.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -150,12 +203,19 @@ const Sidebar = () => {
                   <div className="hidden lg:block text-left min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-1">
                       <span className="font-medium truncate">{user.fullName}</span>
-                      {/* Missed call icon */}
-                      {hasMissedCall && (
-                        <span className="flex-shrink-0 text-warning" title="Missed call">
-                          <PhoneMissed size={13} />
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {/* Friendship badge */}
+                        <FriendshipBadge
+                          status={user.friendshipStatus}
+                          direction={user.friendRequestDirection}
+                        />
+                        {/* Missed call icon */}
+                        {hasMissedCall && (
+                          <span className="text-warning" title="Missed call">
+                            <PhoneMissed size={13} />
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="text-sm text-zinc-400 truncate">
                       {isOnline
@@ -170,7 +230,7 @@ const Sidebar = () => {
               );
             })
           )
-        ) : (
+        ) : activeTab === "groups" ? (
           /* Groups list */
           groups.length === 0 ? (
             <div className="text-center text-zinc-500 py-4">No groups yet</div>
@@ -194,6 +254,73 @@ const Sidebar = () => {
                 </div>
               </button>
             ))
+          )
+        ) : (
+          /* ── Requests tab ─────────────────────────────────── */
+          pendingRequests.length === 0 ? (
+            <div className="text-center py-8 px-4">
+              <div className="text-4xl mb-3">🤝</div>
+              <p className="text-zinc-500 text-sm">No pending requests</p>
+              <p className="text-zinc-400 text-xs mt-1">
+                When someone sends you a friend request, it will appear here
+              </p>
+            </div>
+          ) : (
+            pendingRequests.map((request) => {
+              const sender = request.senderId;
+              return (
+                <div
+                  key={request._id}
+                  className="w-full p-3 flex items-center gap-3 border-b border-base-200 last:border-0"
+                >
+                  {/* Avatar */}
+                  <div className="flex-shrink-0">
+                    <img
+                      src={sender?.profilePic || "/avatar.png"}
+                      alt={sender?.fullName || "User"}
+                      className="size-12 object-cover rounded-full"
+                    />
+                  </div>
+
+                  {/* Info + buttons */}
+                  <div className="hidden lg:flex flex-col flex-1 min-w-0 gap-1.5">
+                    <span className="font-medium text-sm truncate">
+                      {sender?.fullName || "Unknown User"}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleAcceptRequest(request._id)}
+                        className="btn btn-xs btn-success gap-1 flex-1"
+                      >
+                        <Check size={12} /> Accept
+                      </button>
+                      <button
+                        onClick={() => handleRejectRequest(request._id)}
+                        className="btn btn-xs btn-ghost gap-1 flex-1"
+                      >
+                        <X size={12} /> Decline
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mobile: compact buttons */}
+                  <div className="lg:hidden flex flex-col gap-1">
+                    <button
+                      onClick={() => handleAcceptRequest(request._id)}
+                      className="btn btn-xs btn-circle btn-success"
+                    >
+                      <Check size={12} />
+                    </button>
+                    <button
+                      onClick={() => handleRejectRequest(request._id)}
+                      className="btn btn-xs btn-circle btn-ghost"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
           )
         )}
       </div>

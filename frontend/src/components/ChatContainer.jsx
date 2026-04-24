@@ -5,8 +5,9 @@ import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton";
 import { useAuthStore } from "../store/useAuthStore";
+import { useFriendStore } from "../store/useFriendStore";
 import { formatMessageTime } from "../lib/utils";
-import { Lock, LockOpen, AlertCircle, ChevronDown, Check, CheckCheck, Timer, Smile, Plus, Reply } from "lucide-react";
+import { Lock, LockOpen, AlertCircle, ChevronDown, Check, CheckCheck, Timer, Smile, Plus, Reply, UserPlus, Clock, UserCheck, ShieldX } from "lucide-react";
 
 // Encryption status indicator component
 const EncryptionBadge = ({ message }) => {
@@ -55,9 +56,43 @@ const ChatContainer = () => {
     groupTyping,
   } = useChatStore();
   const { authUser } = useAuthStore();
+  const { sendRequest, acceptRequest, rejectRequest } = useFriendStore();
+  const { getUsers } = useChatStore();
   const [openMenuFor, setOpenMenuFor] = useState(null);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editText, setEditText] = useState("");
+  const [isSendingRequest, setIsSendingRequest] = useState(false);
+
+  // Determine friendship status for the selected P2P user
+  const isGroup = !!selectedGroup;
+  const isFriend = isGroup || selectedUser?.friendshipStatus === "accepted";
+  const friendshipStatus = selectedUser?.friendshipStatus || "none";
+  const friendRequestDirection = selectedUser?.friendRequestDirection || null;
+  const friendRequestId = selectedUser?.friendRequestId || null;
+
+  const handleSendFriendRequest = async () => {
+    if (!selectedUser) return;
+    setIsSendingRequest(true);
+    const result = await sendRequest(selectedUser._id);
+    if (result) await getUsers();
+    setIsSendingRequest(false);
+  };
+
+  const handleAcceptFriendRequest = async () => {
+    if (!friendRequestId) return;
+    setIsSendingRequest(true);
+    const success = await acceptRequest(friendRequestId);
+    if (success) await getUsers();
+    setIsSendingRequest(false);
+  };
+
+  const handleRejectFriendRequest = async () => {
+    if (!friendRequestId) return;
+    setIsSendingRequest(true);
+    const success = await rejectRequest(friendRequestId);
+    if (success) await getUsers();
+    setIsSendingRequest(false);
+  };
 
   const startEditing = (message) => {
     setEditingMessageId(message._id);
@@ -140,7 +175,104 @@ const ChatContainer = () => {
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
         }}
       >
-        {messages.length === 0 && (
+        {/* Friend request prompt — shown when not friends */}
+        {!isFriend && !isGroup && (
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="bg-base-200/80 backdrop-blur-sm rounded-2xl p-8 max-w-sm text-center shadow-lg border border-base-300">
+              {friendshipStatus === "none" && (
+                <>
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                    <UserPlus className="size-8 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2">Send a friend request</h3>
+                  <p className="text-sm text-base-content/60 mb-5">
+                    You need to be friends with <span className="font-medium text-base-content">{selectedUser?.fullName}</span> before you can start chatting.
+                  </p>
+                  <button
+                    onClick={handleSendFriendRequest}
+                    disabled={isSendingRequest}
+                    className="btn btn-primary gap-2 shadow-md"
+                  >
+                    {isSendingRequest ? (
+                      <span className="loading loading-spinner loading-sm" />
+                    ) : (
+                      <UserPlus size={18} />
+                    )}
+                    Send Friend Request
+                  </button>
+                </>
+              )}
+
+              {friendshipStatus === "pending" && friendRequestDirection === "sent" && (
+                <>
+                  <div className="size-16 rounded-full bg-warning/10 flex items-center justify-center mx-auto mb-4">
+                    <Clock className="size-8 text-warning" />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2">Request pending</h3>
+                  <p className="text-sm text-base-content/60">
+                    You've sent a friend request to <span className="font-medium text-base-content">{selectedUser?.fullName}</span>. Waiting for them to accept.
+                  </p>
+                  <div className="mt-4 flex items-center justify-center gap-2 text-xs text-warning">
+                    <span className="loading loading-dots loading-xs" />
+                    Waiting for response…
+                  </div>
+                </>
+              )}
+
+              {friendshipStatus === "pending" && friendRequestDirection === "received" && (
+                <>
+                  <div className="size-16 rounded-full bg-info/10 flex items-center justify-center mx-auto mb-4">
+                    <UserPlus className="size-8 text-info" />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2">Friend request received</h3>
+                  <p className="text-sm text-base-content/60 mb-5">
+                    <span className="font-medium text-base-content">{selectedUser?.fullName}</span> wants to connect with you. Accept to start chatting.
+                  </p>
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={handleAcceptFriendRequest}
+                      disabled={isSendingRequest}
+                      className="btn btn-success gap-2"
+                    >
+                      <UserCheck size={18} /> Accept
+                    </button>
+                    <button
+                      onClick={handleRejectFriendRequest}
+                      disabled={isSendingRequest}
+                      className="btn btn-ghost gap-2"
+                    >
+                      <ShieldX size={18} /> Decline
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {friendshipStatus === "rejected" && (
+                <>
+                  <div className="size-16 rounded-full bg-error/10 flex items-center justify-center mx-auto mb-4">
+                    <ShieldX className="size-8 text-error/60" />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2">Request declined</h3>
+                  <p className="text-sm text-base-content/60">
+                    The friend request was declined.
+                  </p>
+                  {friendRequestDirection === "sent" && (
+                    <button
+                      onClick={handleSendFriendRequest}
+                      disabled={isSendingRequest}
+                      className="btn btn-outline btn-sm gap-2 mt-4"
+                    >
+                      <UserPlus size={14} /> Try Again
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Normal empty state for friends */}
+        {isFriend && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-base-content/50">
             <div className="text-6xl mb-4">💬</div>
             <p className="text-lg font-medium">No messages yet</p>
@@ -469,7 +601,17 @@ const ChatContainer = () => {
         <div ref={messageEndRef} />
       </div>
 
-      <MessageInput />
+      {/* Only show message input for friends or groups */}
+      {isFriend && <MessageInput />}
+
+      {/* Non-friend bottom bar */}
+      {!isFriend && !isGroup && (
+        <div className="p-4 bg-base-200/50 border-t border-base-300 text-center">
+          <p className="text-sm text-base-content/50">
+            🔒 You must be friends to send messages
+          </p>
+        </div>
+      )}
     </div>
   );
 };

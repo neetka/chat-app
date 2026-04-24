@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   X,
   MessageSquare,
@@ -10,9 +10,14 @@ import {
   Zap,
   Heart,
   PhoneMissed,
+  UserPlus,
+  UserCheck,
+  ShieldX,
 } from "lucide-react";
 import { useProfileStore } from "../store/useProfileStore";
 import { useAuthStore } from "../store/useAuthStore";
+import { useFriendStore } from "../store/useFriendStore";
+import { useChatStore } from "../store/useChatStore";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const formatLastSeen = (lastSeen) => {
@@ -47,6 +52,9 @@ const TagChip = ({ label, variant = "primary" }) => {
 const UserProfileModal = ({ userId, onClose }) => {
   const { viewedProfile, isLoadingProfile, fetchProfile, clearProfile } = useProfileStore();
   const { onlineUsers, lastSeenMap, missedCallAlerts, clearMissedCallAlert } = useAuthStore();
+  const { sendRequest, acceptRequest, rejectRequest } = useFriendStore();
+  const { users, getUsers } = useChatStore();
+  const [isSendingRequest, setIsSendingRequest] = useState(false);
 
   useEffect(() => {
     if (userId) fetchProfile(userId);
@@ -58,6 +66,35 @@ const UserProfileModal = ({ userId, onClose }) => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, []);
+
+  // Get friendship info from sidebar user data
+  const sidebarUser = users.find((u) => u._id === userId);
+  const friendshipStatus = sidebarUser?.friendshipStatus || "none";
+  const friendRequestDirection = sidebarUser?.friendRequestDirection || null;
+  const friendRequestId = sidebarUser?.friendRequestId || null;
+
+  const handleSendRequest = async () => {
+    setIsSendingRequest(true);
+    await sendRequest(userId);
+    await getUsers();
+    setIsSendingRequest(false);
+  };
+
+  const handleAccept = async () => {
+    if (!friendRequestId) return;
+    setIsSendingRequest(true);
+    await acceptRequest(friendRequestId);
+    await getUsers();
+    setIsSendingRequest(false);
+  };
+
+  const handleReject = async () => {
+    if (!friendRequestId) return;
+    setIsSendingRequest(true);
+    await rejectRequest(friendRequestId);
+    await getUsers();
+    setIsSendingRequest(false);
+  };
 
   const isOnline = onlineUsers.includes(userId);
   const lastSeen = lastSeenMap[userId] || viewedProfile?.lastSeen;
@@ -150,6 +187,74 @@ const UserProfileModal = ({ userId, onClose }) => {
                   </button>
                 </div>
               )}
+
+              {/* ── Friend request action button ────────────── */}
+              <div className="w-full mt-2">
+                {friendshipStatus === "accepted" && (
+                  <div className="flex items-center justify-center gap-2 text-success text-sm">
+                    <UserCheck size={16} />
+                    <span className="font-medium">Friends</span>
+                  </div>
+                )}
+
+                {friendshipStatus === "none" && (
+                  <button
+                    onClick={handleSendRequest}
+                    disabled={isSendingRequest}
+                    className="btn btn-primary btn-sm w-full gap-2"
+                  >
+                    {isSendingRequest ? (
+                      <span className="loading loading-spinner loading-xs" />
+                    ) : (
+                      <UserPlus size={14} />
+                    )}
+                    Send Friend Request
+                  </button>
+                )}
+
+                {friendshipStatus === "pending" && friendRequestDirection === "sent" && (
+                  <div className="flex items-center justify-center gap-2 text-warning text-sm">
+                    <Clock size={14} />
+                    <span className="font-medium">Request Pending</span>
+                  </div>
+                )}
+
+                {friendshipStatus === "pending" && friendRequestDirection === "received" && (
+                  <div className="flex gap-2 w-full">
+                    <button
+                      onClick={handleAccept}
+                      disabled={isSendingRequest}
+                      className="btn btn-success btn-sm flex-1 gap-1"
+                    >
+                      <UserCheck size={14} /> Accept
+                    </button>
+                    <button
+                      onClick={handleReject}
+                      disabled={isSendingRequest}
+                      className="btn btn-ghost btn-sm flex-1 gap-1"
+                    >
+                      <ShieldX size={14} /> Decline
+                    </button>
+                  </div>
+                )}
+
+                {friendshipStatus === "rejected" && friendRequestDirection === "sent" && (
+                  <button
+                    onClick={handleSendRequest}
+                    disabled={isSendingRequest}
+                    className="btn btn-outline btn-sm w-full gap-2"
+                  >
+                    <UserPlus size={14} /> Send Again
+                  </button>
+                )}
+
+                {friendshipStatus === "rejected" && friendRequestDirection === "received" && (
+                  <div className="flex items-center justify-center gap-2 text-base-content/40 text-sm">
+                    <ShieldX size={14} />
+                    <span>Request Declined</span>
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
         </div>

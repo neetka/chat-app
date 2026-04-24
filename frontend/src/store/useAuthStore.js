@@ -218,6 +218,37 @@ export const useAuthStore = create((set, get) => ({
         }
       });
     });
+
+    // ── Friend request real-time events ──────────────────────
+    socket.on("friend:request-received", (data) => {
+      import("./useFriendStore").then(({ useFriendStore }) => {
+        useFriendStore.getState().onRequestReceived(data);
+      });
+      // Refresh sidebar so friendship status updates
+      import("./useChatStore").then(({ useChatStore }) => {
+        useChatStore.getState().getUsers();
+      });
+    });
+
+    socket.on("friend:request-accepted", (data) => {
+      import("./useFriendStore").then(({ useFriendStore }) => {
+        useFriendStore.getState().onRequestAccepted(data);
+      });
+      // Refresh sidebar so friendship status updates
+      import("./useChatStore").then(({ useChatStore }) => {
+        useChatStore.getState().getUsers();
+      });
+    });
+
+    socket.on("friend:request-rejected", (data) => {
+      import("./useFriendStore").then(({ useFriendStore }) => {
+        useFriendStore.getState().onRequestRejected(data);
+      });
+      // Refresh sidebar so friendship status updates
+      import("./useChatStore").then(({ useChatStore }) => {
+        useChatStore.getState().getUsers();
+      });
+    });
   },
   disconnectSocket: () => {
     const socket = get().socket;

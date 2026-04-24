@@ -1,6 +1,7 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import Group from "../models/group.model.js";
+import FriendRequest from "../models/friendRequest.model.js";
 
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
@@ -14,6 +15,23 @@ export const getUsersForSidebar = async (req, res) => {
     const allUsers = await User.find({
       _id: { $ne: loggedInUserId },
     }).select("-password");
+
+    // Get all friend requests involving the logged-in user
+    const friendRequests = await FriendRequest.find({
+      $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
+    });
+
+    // Build a map: otherUserId -> { status, requestId, direction }
+    const friendshipMap = new Map();
+    friendRequests.forEach((fr) => {
+      const isSender = fr.senderId.toString() === loggedInUserId.toString();
+      const otherId = isSender ? fr.receiverId.toString() : fr.senderId.toString();
+      friendshipMap.set(otherId, {
+        status: fr.status,
+        requestId: fr._id,
+        direction: isSender ? "sent" : "received",
+      });
+    });
 
     // Get the last message timestamp for each conversation
     const lastMessages = await Message.aggregate([
@@ -45,7 +63,7 @@ export const getUsersForSidebar = async (req, res) => {
       },
     ]);
 
-    // Create a map of odtherUserId -> lastMessageAt
+    // Create a map of otherUserId -> lastMessageAt
     const lastMessageMap = new Map();
     lastMessages.forEach((msg) => {
       lastMessageMap.set(msg._id.toString(), msg.lastMessageAt);
@@ -68,7 +86,23 @@ export const getUsersForSidebar = async (req, res) => {
       return a.fullName.localeCompare(b.fullName);
     });
 
-    res.status(200).json(sortedUsers);
+    // Augment each user with friendship status
+    const usersWithFriendship = sortedUsers.map((user) => {
+      const userObj = user.toObject();
+      const friendship = friendshipMap.get(user._id.toString());
+      if (friendship) {
+        userObj.friendshipStatus = friendship.status;
+        userObj.friendRequestId = friendship.requestId;
+        userObj.friendRequestDirection = friendship.direction;
+      } else {
+        userObj.friendshipStatus = "none";
+        userObj.friendRequestId = null;
+        userObj.friendRequestDirection = null;
+      }
+      return userObj;
+    });
+
+    res.status(200).json(usersWithFriendship);
   } catch (error) {
     console.error("Error in getUsersForSidebar: ", error.message);
     res.status(500).json({ error: "Internal server error" });
@@ -79,6 +113,19 @@ export const getMessages = async (req, res) => {
   try {
     const { id: userToChatId } = req.params;
     const myId = req.user._id;
+
+    // Check friendship before returning messages
+    const friendship = await FriendRequest.findOne({
+      $or: [
+        { senderId: myId, receiverId: userToChatId },
+        { senderId: userToChatId, receiverId: myId },
+      ],
+      status: "accepted",
+    });
+
+    if (!friendship) {
+      return res.status(200).json([]); // Return empty — not friends yet
+    }
 
     const messages = await Message.find({
       $or: [
@@ -146,7 +193,19 @@ export const sendMessage = async (req, res) => {
         // We do NOT set receiverId for group messages to strictly differentiate
         // OR we set receiverId to null. Model allows receiverId to be optional now.
     } else {
-        // Direct Message
+        // Direct Message — check friendship
+        const friendship = await FriendRequest.findOne({
+          $or: [
+            { senderId, receiverId },
+            { senderId: receiverId, receiverId: senderId },
+          ],
+          status: "accepted",
+        });
+
+        if (!friendship) {
+          return res.status(403).json({ error: "You must be friends to send a message" });
+        }
+
         messageData.receiverId = receiverId;
     }
 
